@@ -4,5 +4,6 @@ channels-redis
 opencv-python
 Pillow
 daphne
+playwright
 
 
