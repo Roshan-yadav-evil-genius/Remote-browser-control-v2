@@ -20,16 +20,33 @@
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        h1 {
-            text-align: center;
-            color: #333;
+        .controls-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .canvas-container {
+            width: 100%;
+            max-width: 100%;
+            overflow: auto;
+            display: flex;
+            justify-content: center;
         }
         canvas {
             border: 2px solid #333;
             display: block;
             margin: 20px auto;
             background-color: #000;
+            max-width: 100%;
+            height: auto;
+            /* Maintain aspect ratio while scaling */
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
         }
         .controls {
             text-align: center;
@@ -60,12 +77,15 @@
 </head>
 <body>
     <div class="container">
-        <h1>Video Stream with Canvas Click</h1>
-        <canvas id="videoCanvas" width="640" height="480"></canvas>
-        <div class="controls">
-            <button id="startBtn">Start</button>
+        <div class="canvas-container">
+            <canvas id="videoCanvas" width="1920" height="1080"></canvas>
         </div>
-        <div class="status" id="status">Ready to start</div>
+        <div class="controls-container">
+            <div class="controls">
+                <button id="startBtn">Start</button>
+            </div>
+            <div class="status" id="status">Ready to start</div>
+        </div>
     </div>
 
     <script>
@@ -73,6 +93,37 @@
         const ctx = canvas.getContext('2d');
         const startBtn = document.getElementById('startBtn');
         const statusDiv = document.getElementById('status');
+        
+        // Canvas dimensions (internal resolution)
+        const CANVAS_WIDTH = 1920;
+        const CANVAS_HEIGHT = 1080;
+        
+        // Set canvas internal size
+        canvas.width = CANVAS_WIDTH;
+        canvas.height = CANVAS_HEIGHT;
+        
+        // Scale canvas to fit viewport while maintaining aspect ratio
+        function scaleCanvas() {
+            const container = canvas.parentElement;
+            const maxWidth = window.innerWidth - 100; // Leave some margin
+            const maxHeight = window.innerHeight - 200; // Leave space for controls
+            
+            const aspectRatio = CANVAS_WIDTH / CANVAS_HEIGHT;
+            let displayWidth = maxWidth;
+            let displayHeight = displayWidth / aspectRatio;
+            
+            if (displayHeight > maxHeight) {
+                displayHeight = maxHeight;
+                displayWidth = displayHeight * aspectRatio;
+            }
+            
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+        }
+        
+        // Scale on load and resize
+        scaleCanvas();
+        window.addEventListener('resize', scaleCanvas);
         
         let ws = null;
         let streaming = false;
@@ -147,7 +198,7 @@
             }
         });
 
-        // Canvas click handler
+        // Canvas click handler - maps scaled coordinates to full resolution
         canvas.addEventListener('click', function(event) {
             console.log('Canvas clicked!', 'streaming:', streaming, 'ws:', ws, 'readyState:', ws ? ws.readyState : 'null');
             
@@ -161,22 +212,38 @@
                 return;
             }
             
+            // Get the bounding rectangle of the displayed canvas
             const rect = canvas.getBoundingClientRect();
-            const x = Math.round((event.clientX - rect.left) * (canvas.width / rect.width));
-            const y = Math.round((event.clientY - rect.top) * (canvas.height / rect.height));
+            
+            // Calculate click position relative to the displayed canvas
+            const clickX = event.clientX - rect.left;
+            const clickY = event.clientY - rect.top;
+            
+            // Map from displayed size to internal canvas size (1920x1080)
+            // This accounts for the scaling applied via CSS
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            
+            const x = Math.round(clickX * scaleX);
+            const y = Math.round(clickY * scaleY);
+            
+            // Ensure coordinates are within bounds
+            const boundedX = Math.max(0, Math.min(x, CANVAS_WIDTH - 1));
+            const boundedY = Math.max(0, Math.min(y, CANVAS_HEIGHT - 1));
             
             const clickMessage = {
                 type: 'click',
-                x: x,
-                y: y
+                x: boundedX,
+                y: boundedY
             };
             
+            console.log('Click on display:', clickX, clickY, 'Mapped to:', boundedX, boundedY);
             console.log('Sending click message:', clickMessage);
             
-            // Send click coordinates to backend
+            // Send click coordinates to backend (full resolution coordinates)
             ws.send(JSON.stringify(clickMessage));
             
-            statusDiv.textContent = `Click at (${x}, ${y})`;
+            statusDiv.textContent = `Click at (${boundedX}, ${boundedY})`;
         });
 
         // Initialize WebSocket connection on page load

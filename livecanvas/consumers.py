@@ -10,8 +10,8 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
     """WebSocket consumer that handles video streaming via browser screenshots."""
     
     BROWSER_URL = 'https://shawon9324.github.io/apps/keytester/'
-    CANVAS_WIDTH = 640
-    CANVAS_HEIGHT = 480
+    CANVAS_WIDTH = 1920
+    CANVAS_HEIGHT = 1080
     STREAMING_FPS = 15.0
     
     async def connect(self):
