@@ -47,6 +47,11 @@
             /* Maintain aspect ratio while scaling */
             image-rendering: -webkit-optimize-contrast;
             image-rendering: crisp-edges;
+            outline: none;
+        }
+        canvas:focus {
+            border: 2px solid #4CAF50;
+            box-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
         }
         .controls {
             text-align: center;
@@ -78,7 +83,7 @@
 <body>
     <div class="container">
         <div class="canvas-container">
-            <canvas id="videoCanvas" width="1920" height="1080"></canvas>
+            <canvas id="videoCanvas" width="1920" height="1080" tabindex="0"></canvas>
         </div>
         <div class="controls-container">
             <div class="controls">
@@ -247,6 +252,8 @@
                         streaming = true;
                         startBtn.disabled = true;
                         startBtn.textContent = 'Streaming...';
+                        // Auto-focus canvas when streaming starts
+                        canvas.focus();
                     };
                 } else {
                     ws.send(JSON.stringify({ type: 'start' }));
@@ -254,6 +261,8 @@
                     startBtn.disabled = true;
                     startBtn.textContent = 'Streaming...';
                     statusDiv.textContent = 'Streaming';
+                    // Auto-focus canvas when streaming starts
+                    canvas.focus();
                 }
             }
         });
@@ -312,6 +321,62 @@
                 clearTimeout(mousemoveThrottle);
                 mousemoveThrottle = null;
             }
+        });
+        
+        // Send keyboard event to backend
+        function sendKeyboardEvent(type, event) {
+            if (!streaming || !ws || ws.readyState !== WebSocket.OPEN) {
+                return;
+            }
+            
+            // Only send if canvas is focused
+            if (document.activeElement !== canvas) {
+                return;
+            }
+            
+            const message = {
+                type: type,
+                key: event.key,
+                code: event.code,
+                ctrlKey: event.ctrlKey || false,
+                altKey: event.altKey || false,
+                shiftKey: event.shiftKey || false,
+                metaKey: event.metaKey || false
+            };
+            
+            // Add repeat property for keydown events
+            if (type === 'keydown') {
+                message.repeat = event.repeat || false;
+            }
+            
+            ws.send(JSON.stringify(message));
+        }
+        
+        // Keyboard event handlers
+        canvas.addEventListener('keydown', function(event) {
+            // Prevent common browser shortcuts
+            if (event.ctrlKey || event.metaKey) {
+                const key = event.key.toLowerCase();
+                // Prevent Ctrl+R (refresh), Ctrl+W (close), Ctrl+N (new window), etc.
+                if (key === 'r' || key === 'w' || key === 'n' || key === 't') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+            }
+            
+            // Prevent default browser behavior for all keys when canvas is focused
+            event.preventDefault();
+            event.stopPropagation();
+            
+            sendKeyboardEvent('keydown', event);
+        });
+        
+        canvas.addEventListener('keyup', function(event) {
+            // Prevent default browser behavior for all keys when canvas is focused
+            event.preventDefault();
+            event.stopPropagation();
+            
+            sendKeyboardEvent('keyup', event);
         });
 
         // Initialize WebSocket connection on page load

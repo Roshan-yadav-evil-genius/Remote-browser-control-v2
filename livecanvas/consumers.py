@@ -9,7 +9,7 @@ from .screenshot_streamer import ScreenshotStreamer
 class VideoStreamConsumer(AsyncWebsocketConsumer):
     """WebSocket consumer that handles video streaming via browser screenshots."""
     TESTING_URLS=["https://shawon9324.github.io/apps/keytester/","https://cuberto.com/blog/cuberto-mouse-follower/"]
-    BROWSER_URL = TESTING_URLS[1]
+    BROWSER_URL = TESTING_URLS[0]
     CANVAS_WIDTH = 1920
     CANVAS_HEIGHT = 1080
     STREAMING_FPS = 15.0
@@ -54,6 +54,10 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
                 await self.handle_click(data)
             elif message_type == 'wheel':
                 await self.handle_wheel(data)
+            elif message_type == 'keydown':
+                await self.handle_keydown(data)
+            elif message_type == 'keyup':
+                await self.handle_keyup(data)
         except json.JSONDecodeError as e:
             print(f"JSON decode error: {e}")
 
@@ -131,6 +135,69 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
                 await self.browser_manager.scroll(browser_x, browser_y, delta_x, delta_y)
             except Exception as e:
                 print(f"Error scrolling in browser: {e}")
+    
+    async def handle_keydown(self, data: dict) -> None:
+        """Handle key down events from client."""
+        key = data.get('key')
+        code = data.get('code')
+        ctrl_key = data.get('ctrlKey', False)
+        alt_key = data.get('altKey', False)
+        shift_key = data.get('shiftKey', False)
+        meta_key = data.get('metaKey', False)
+        repeat = data.get('repeat', False)
+        
+        if not key or not self.browser_manager:
+            return
+        
+        # Build modifiers list
+        modifiers = []
+        if ctrl_key:
+            modifiers.append('Control')
+        if alt_key:
+            modifiers.append('Alt')
+        if shift_key:
+            modifiers.append('Shift')
+        if meta_key:
+            modifiers.append('Meta')
+        
+        # Skip if this is a repeat event for modifier keys (to avoid spam)
+        if repeat and key in ['Control', 'Alt', 'Shift', 'Meta']:
+            return
+        
+        print(f"Key down: {key}, code: {code}, modifiers: {modifiers}, repeat: {repeat}")
+        try:
+            await self.browser_manager.key_down(key, code, modifiers if modifiers else None)
+        except Exception as e:
+            print(f"Error with key down in browser: {e}")
+    
+    async def handle_keyup(self, data: dict) -> None:
+        """Handle key up events from client."""
+        key = data.get('key')
+        code = data.get('code')
+        ctrl_key = data.get('ctrlKey', False)
+        alt_key = data.get('altKey', False)
+        shift_key = data.get('shiftKey', False)
+        meta_key = data.get('metaKey', False)
+        
+        if not key or not self.browser_manager:
+            return
+        
+        # Build modifiers list
+        modifiers = []
+        if ctrl_key:
+            modifiers.append('Control')
+        if alt_key:
+            modifiers.append('Alt')
+        if shift_key:
+            modifiers.append('Shift')
+        if meta_key:
+            modifiers.append('Meta')
+        
+        print(f"Key up: {key}, code: {code}, modifiers: {modifiers}")
+        try:
+            await self.browser_manager.key_up(key, code, modifiers if modifiers else None)
+        except Exception as e:
+            print(f"Error with key up in browser: {e}")
 
     async def send_frame(self, frame_base64: str) -> None:
         """Send frame data to WebSocket client."""

@@ -147,6 +147,159 @@ class BrowserManager:
         await self.page.mouse.move(x, y)
         await self.page.mouse.wheel(delta_x, delta_y)
     
+    def _map_key(self, key: str, code: str = None) -> str:
+        """
+        Map JavaScript key name/code to Playwright key name.
+        
+        Args:
+            key: JavaScript key value (e.g., 'a', 'Enter', 'Control')
+            code: JavaScript key code (e.g., 'KeyA', 'Enter', 'ControlLeft')
+            
+        Returns:
+            Playwright key name
+        """
+        # Direct mapping for most keys
+        key_map = {
+            # Special keys
+            'Enter': 'Enter',
+            'Escape': 'Escape',
+            'Tab': 'Tab',
+            'Backspace': 'Backspace',
+            'Delete': 'Delete',
+            'Insert': 'Insert',
+            'Home': 'Home',
+            'End': 'End',
+            'PageUp': 'PageUp',
+            'PageDown': 'PageDown',
+            'PrintScreen': 'PrintScreen',
+            'Pause': 'Pause',
+            'ScrollLock': 'ScrollLock',
+            'NumLock': 'NumLock',
+            'CapsLock': 'CapsLock',
+            
+            # Arrow keys
+            'ArrowUp': 'ArrowUp',
+            'ArrowDown': 'ArrowDown',
+            'ArrowLeft': 'ArrowLeft',
+            'ArrowRight': 'ArrowRight',
+            
+            # Function keys
+            'F1': 'F1', 'F2': 'F2', 'F3': 'F3', 'F4': 'F4',
+            'F5': 'F5', 'F6': 'F6', 'F7': 'F7', 'F8': 'F8',
+            'F9': 'F9', 'F10': 'F10', 'F11': 'F11', 'F12': 'F12',
+            
+            # Modifier keys
+            'Control': 'Control',
+            'Alt': 'Alt',
+            'Shift': 'Shift',
+            'Meta': 'Meta',
+            
+            # Whitespace
+            ' ': 'Space',
+            'Space': 'Space',
+        }
+        
+        # Check direct mapping first
+        if key in key_map:
+            return key_map[key]
+        
+        # Handle single character keys (letters, numbers, symbols)
+        if len(key) == 1:
+            # Playwright expects lowercase for letters, but Shift is handled separately
+            return key.lower() if key.isalpha() else key
+        
+        # Handle code-based mapping for special cases
+        if code:
+            code_map = {
+                'Space': 'Space',
+                'Enter': 'Enter',
+                'Escape': 'Escape',
+                'Tab': 'Tab',
+                'Backspace': 'Backspace',
+                'Delete': 'Delete',
+                'Insert': 'Insert',
+                'Home': 'Home',
+                'End': 'End',
+                'PageUp': 'PageUp',
+                'PageDown': 'PageDown',
+                'ArrowUp': 'ArrowUp',
+                'ArrowDown': 'ArrowDown',
+                'ArrowLeft': 'ArrowLeft',
+                'ArrowRight': 'ArrowRight',
+            }
+            if code in code_map:
+                return code_map[code]
+        
+        # Default: return key as-is (Playwright may accept it)
+        return key
+    
+    async def key_down(self, key: str, code: str = None, modifiers: list = None) -> None:
+        """
+        Press a key in the browser.
+        
+        Args:
+            key: JavaScript key value
+            code: JavaScript key code (optional)
+            modifiers: List of modifier keys ['Control', 'Alt', 'Shift', 'Meta']
+            
+        Raises:
+            Exception: If key press fails
+        """
+        if not self.page:
+            raise RuntimeError("Browser page not initialized")
+        
+        playwright_key = self._map_key(key, code)
+        
+        # Handle modifiers
+        if modifiers:
+            # Press modifiers first
+            for mod in modifiers:
+                if mod in ['Control', 'Alt', 'Shift', 'Meta']:
+                    await self.page.keyboard.down(mod)
+        
+        # Press the main key
+        await self.page.keyboard.down(playwright_key)
+    
+    async def key_up(self, key: str, code: str = None, modifiers: list = None) -> None:
+        """
+        Release a key in the browser.
+        
+        Args:
+            key: JavaScript key value
+            code: JavaScript key code (optional)
+            modifiers: List of modifier keys ['Control', 'Alt', 'Shift', 'Meta']
+            
+        Raises:
+            Exception: If key release fails
+        """
+        if not self.page:
+            raise RuntimeError("Browser page not initialized")
+        
+        playwright_key = self._map_key(key, code)
+        
+        # Release the main key first
+        await self.page.keyboard.up(playwright_key)
+        
+        # Release modifiers
+        if modifiers:
+            for mod in modifiers:
+                if mod in ['Control', 'Alt', 'Shift', 'Meta']:
+                    await self.page.keyboard.up(mod)
+    
+    async def type_text(self, text: str) -> None:
+        """
+        Type text in the browser.
+        
+        Args:
+            text: Text to type
+            
+        Raises:
+            Exception: If typing fails
+        """
+        if not self.page:
+            raise RuntimeError("Browser page not initialized")
+        await self.page.keyboard.type(text)
+    
     async def cleanup(self) -> None:
         """Clean up browser and Playwright instances."""
         if self.page:
