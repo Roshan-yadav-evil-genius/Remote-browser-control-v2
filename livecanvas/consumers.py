@@ -8,8 +8,8 @@ from .screenshot_streamer import ScreenshotStreamer
 
 class VideoStreamConsumer(AsyncWebsocketConsumer):
     """WebSocket consumer that handles video streaming via browser screenshots."""
-    
-    BROWSER_URL = 'https://shawon9324.github.io/apps/keytester/'
+    TESTING_URLS=["https://shawon9324.github.io/apps/keytester/","https://cuberto.com/blog/cuberto-mouse-follower/"]
+    BROWSER_URL = TESTING_URLS[1]
     CANVAS_WIDTH = 1920
     CANVAS_HEIGHT = 1080
     STREAMING_FPS = 15.0
