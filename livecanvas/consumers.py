@@ -4,24 +4,31 @@ import asyncio
 from channels.generic.websocket import AsyncWebsocketConsumer
 from .browser_manager import BrowserManager
 from .screenshot_streamer import ScreenshotStreamer
+from .config import StreamConfig
+from .message_router import MessageRouter
+from .event_handlers.mouse_handler import MouseHandler
+from .event_handlers.keyboard_handler import KeyboardHandler
+from .controllers.mouse_controller import MouseController
+from .controllers.keyboard_controller import KeyboardController
+from .validators import MessageValidator
 
 
 class VideoStreamConsumer(AsyncWebsocketConsumer):
     """WebSocket consumer that handles video streaming via browser screenshots."""
-    TESTING_URLS=["https://shawon9324.github.io/apps/keytester/","https://cuberto.com/blog/cuberto-mouse-follower/"]
-    BROWSER_URL = TESTING_URLS[0]
-    CANVAS_WIDTH = 1920
-    CANVAS_HEIGHT = 1080
-    STREAMING_FPS = 15.0
     
     async def connect(self):
+        """Handle WebSocket connection."""
         await self.accept()
         self.streaming = False
         self.browser_manager: BrowserManager = None
         self.screenshot_streamer: ScreenshotStreamer = None
+        self.mouse_controller: MouseController = None
+        self.keyboard_controller: KeyboardController = None
+        self.message_router: MessageRouter = None
         self.streaming_task = None
 
     async def disconnect(self, close_code):
+        """Handle WebSocket disconnection."""
         self.streaming = False
         if self.streaming_task:
             self.streaming_task.cancel()
@@ -38,166 +45,17 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
         """Handle incoming WebSocket messages."""
         print(f"Received message: {text_data}")
         try:
-            data = json.loads(text_data)
-            message_type = data.get('type')
-
-            if message_type == 'start':
-                if not self.streaming:
+            if self.message_router:
+                await self.message_router.route(text_data)
+            else:
+                # Handle 'start' message before router is initialized
+                validator = MessageValidator()
+                data = validator.validate_json(text_data)
+                message_type = validator.validate_message_type(data)
+                if message_type == 'start' and not self.streaming:
                     self.streaming_task = asyncio.create_task(self.start_streaming())
-            elif message_type == 'mousemove':
-                await self.handle_mousemove(data)
-            elif message_type == 'mousedown':
-                await self.handle_mousedown(data)
-            elif message_type == 'mouseup':
-                await self.handle_mouseup(data)
-            elif message_type == 'click':
-                await self.handle_click(data)
-            elif message_type == 'wheel':
-                await self.handle_wheel(data)
-            elif message_type == 'keydown':
-                await self.handle_keydown(data)
-            elif message_type == 'keyup':
-                await self.handle_keyup(data)
-        except json.JSONDecodeError as e:
-            print(f"JSON decode error: {e}")
-
-    async def handle_mousemove(self, data: dict) -> None:
-        """Handle mouse movement events from client."""
-        x = data.get('x')
-        y = data.get('y')
-        
-        if x is not None and y is not None and self.browser_manager:
-            browser_x = int(x)
-            browser_y = int(y)
-            try:
-                await self.browser_manager.move_mouse(browser_x, browser_y)
-            except Exception as e:
-                print(f"Error moving mouse in browser: {e}")
-    
-    async def handle_mousedown(self, data: dict) -> None:
-        """Handle mouse down events from client."""
-        x = data.get('x')
-        y = data.get('y')
-        button = data.get('button', 'left')
-        
-        if x is not None and y is not None and self.browser_manager:
-            browser_x = int(x)
-            browser_y = int(y)
-            print(f"Mouse down in browser at: ({browser_x}, {browser_y}), button: {button}")
-            try:
-                await self.browser_manager.mouse_down(browser_x, browser_y, button)
-            except Exception as e:
-                print(f"Error with mouse down in browser: {e}")
-    
-    async def handle_mouseup(self, data: dict) -> None:
-        """Handle mouse up events from client."""
-        x = data.get('x')
-        y = data.get('y')
-        button = data.get('button', 'left')
-        
-        if x is not None and y is not None and self.browser_manager:
-            browser_x = int(x)
-            browser_y = int(y)
-            print(f"Mouse up in browser at: ({browser_x}, {browser_y}), button: {button}")
-            try:
-                await self.browser_manager.mouse_up(browser_x, browser_y, button)
-            except Exception as e:
-                print(f"Error with mouse up in browser: {e}")
-    
-    async def handle_click(self, data: dict) -> None:
-        """Handle click events from client."""
-        x = data.get('x')
-        y = data.get('y')
-        button = data.get('button', 'left')
-        print(f"Click received: x={x}, y={y}, button={button}")
-        
-        if x is not None and y is not None and self.browser_manager:
-            browser_x = int(x)
-            browser_y = int(y)
-            print(f"Clicking in browser at: ({browser_x}, {browser_y}), button: {button}")
-            try:
-                await self.browser_manager.click(browser_x, browser_y, button)
-            except Exception as e:
-                print(f"Error clicking in browser: {e}")
-    
-    async def handle_wheel(self, data: dict) -> None:
-        """Handle wheel/scroll events from client."""
-        x = data.get('x')
-        y = data.get('y')
-        delta_x = data.get('deltaX', 0)
-        delta_y = data.get('deltaY', 0)
-        
-        if x is not None and y is not None and self.browser_manager:
-            browser_x = int(x)
-            browser_y = int(y)
-            print(f"Scrolling in browser at: ({browser_x}, {browser_y}), delta: ({delta_x}, {delta_y})")
-            try:
-                await self.browser_manager.scroll(browser_x, browser_y, delta_x, delta_y)
-            except Exception as e:
-                print(f"Error scrolling in browser: {e}")
-    
-    async def handle_keydown(self, data: dict) -> None:
-        """Handle key down events from client."""
-        key = data.get('key')
-        code = data.get('code')
-        ctrl_key = data.get('ctrlKey', False)
-        alt_key = data.get('altKey', False)
-        shift_key = data.get('shiftKey', False)
-        meta_key = data.get('metaKey', False)
-        repeat = data.get('repeat', False)
-        
-        if not key or not self.browser_manager:
-            return
-        
-        # Build modifiers list
-        modifiers = []
-        if ctrl_key:
-            modifiers.append('Control')
-        if alt_key:
-            modifiers.append('Alt')
-        if shift_key:
-            modifiers.append('Shift')
-        if meta_key:
-            modifiers.append('Meta')
-        
-        # Skip if this is a repeat event for modifier keys (to avoid spam)
-        if repeat and key in ['Control', 'Alt', 'Shift', 'Meta']:
-            return
-        
-        print(f"Key down: {key}, code: {code}, modifiers: {modifiers}, repeat: {repeat}")
-        try:
-            await self.browser_manager.key_down(key, code, modifiers if modifiers else None)
-        except Exception as e:
-            print(f"Error with key down in browser: {e}")
-    
-    async def handle_keyup(self, data: dict) -> None:
-        """Handle key up events from client."""
-        key = data.get('key')
-        code = data.get('code')
-        ctrl_key = data.get('ctrlKey', False)
-        alt_key = data.get('altKey', False)
-        shift_key = data.get('shiftKey', False)
-        meta_key = data.get('metaKey', False)
-        
-        if not key or not self.browser_manager:
-            return
-        
-        # Build modifiers list
-        modifiers = []
-        if ctrl_key:
-            modifiers.append('Control')
-        if alt_key:
-            modifiers.append('Alt')
-        if shift_key:
-            modifiers.append('Shift')
-        if meta_key:
-            modifiers.append('Meta')
-        
-        print(f"Key up: {key}, code: {code}, modifiers: {modifiers}")
-        try:
-            await self.browser_manager.key_up(key, code, modifiers if modifiers else None)
-        except Exception as e:
-            print(f"Error with key up in browser: {e}")
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"Message error: {e}")
 
     async def send_frame(self, frame_base64: str) -> None:
         """Send frame data to WebSocket client."""
@@ -223,18 +81,33 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
         try:
             # Initialize browser manager and launch browser
             self.browser_manager = BrowserManager(
-                viewport_width=self.CANVAS_WIDTH,
-                viewport_height=self.CANVAS_HEIGHT
+                viewport_width=StreamConfig.CANVAS_WIDTH,
+                viewport_height=StreamConfig.CANVAS_HEIGHT
             )
             page = await self.browser_manager.launch(
-                url=self.BROWSER_URL,
-                headless=False
+                url=StreamConfig.BROWSER_URL,
+                headless=StreamConfig.HEADLESS
+            )
+            
+            # Initialize controllers
+            self.mouse_controller = MouseController(page)
+            self.keyboard_controller = KeyboardController(page)
+            
+            # Initialize event handlers
+            mouse_handler = MouseHandler(self.mouse_controller)
+            keyboard_handler = KeyboardHandler(self.keyboard_controller)
+            
+            # Initialize message router
+            self.message_router = MessageRouter(
+                mouse_handler=mouse_handler,
+                keyboard_handler=keyboard_handler,
+                start_callback=None  # Already handled
             )
             
             # Initialize screenshot streamer
             self.screenshot_streamer = ScreenshotStreamer(
                 page=page,
-                fps=self.STREAMING_FPS
+                fps=StreamConfig.STREAMING_FPS
             )
             
             # Start streaming
