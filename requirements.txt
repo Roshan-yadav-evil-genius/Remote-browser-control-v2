@@ -1,0 +1,8 @@
+Django
+channels
+channels-redis
+opencv-python
+Pillow
+daphne
+
+

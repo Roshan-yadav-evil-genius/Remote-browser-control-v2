@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Stream with Canvas Click</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        canvas {
+            border: 2px solid #333;
+            display: block;
+            margin: 20px auto;
+            background-color: #000;
+        }
+        .controls {
+            text-align: center;
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .status {
+            text-align: center;
+            margin-top: 10px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Video Stream with Canvas Click</h1>
+        <canvas id="videoCanvas" width="640" height="480"></canvas>
+        <div class="controls">
+            <button id="startBtn">Start</button>
+        </div>
+        <div class="status" id="status">Ready to start</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('videoCanvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const statusDiv = document.getElementById('status');
+        
+        let ws = null;
+        let streaming = false;
+
+        // WebSocket connection
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/video/`;
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = function() {
+                statusDiv.textContent = 'Connected';
+            };
+            
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                
+                if (data.type === 'frame') {
+                    const img = new Image();
+                    img.onload = function() {
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    };
+                    img.src = 'data:image/jpeg;base64,' + data.data;
+                } else if (data.type === 'error') {
+                    statusDiv.textContent = 'Error: ' + data.message;
+                    streaming = false;
+                    startBtn.disabled = false;
+                    startBtn.textContent = 'Start';
+                }
+            };
+            
+            ws.onerror = function(error) {
+                statusDiv.textContent = 'WebSocket error';
+                console.error('WebSocket error:', error);
+            };
+            
+            ws.onclose = function() {
+                statusDiv.textContent = 'Disconnected';
+                streaming = false;
+                startBtn.disabled = false;
+                startBtn.textContent = 'Start';
+            };
+        }
+
+        // Start streaming
+        startBtn.addEventListener('click', function() {
+            if (!streaming) {
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                    // Reconnect if needed
+                    if (ws) {
+                        ws.close();
+                    }
+                    connectWebSocket();
+                    // Wait for connection before sending start
+                    const originalOnOpen = ws.onopen;
+                    ws.onopen = function() {
+                        if (originalOnOpen) originalOnOpen();
+                        statusDiv.textContent = 'Starting stream...';
+                        ws.send(JSON.stringify({ type: 'start' }));
+                        streaming = true;
+                        startBtn.disabled = true;
+                        startBtn.textContent = 'Streaming...';
+                    };
+                } else {
+                    ws.send(JSON.stringify({ type: 'start' }));
+                    streaming = true;
+                    startBtn.disabled = true;
+                    startBtn.textContent = 'Streaming...';
+                    statusDiv.textContent = 'Streaming';
+                }
+            }
+        });
+
+        // Canvas click handler
+        canvas.addEventListener('click', function(event) {
+            console.log('Canvas clicked!', 'streaming:', streaming, 'ws:', ws, 'readyState:', ws ? ws.readyState : 'null');
+            
+            if (!streaming) {
+                console.log('Not streaming, ignoring click');
+                return;
+            }
+            
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                console.log('WebSocket not open, ignoring click');
+                return;
+            }
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.round((event.clientX - rect.left) * (canvas.width / rect.width));
+            const y = Math.round((event.clientY - rect.top) * (canvas.height / rect.height));
+            
+            const clickMessage = {
+                type: 'click',
+                x: x,
+                y: y
+            };
+            
+            console.log('Sending click message:', clickMessage);
+            
+            // Send click coordinates to backend
+            ws.send(JSON.stringify(clickMessage));
+            
+            statusDiv.textContent = `Click at (${x}, ${y})`;
+        });
+
+        // Initialize WebSocket connection on page load
+        connectWebSocket();
+    </script>
+</body>
+</html>
+
