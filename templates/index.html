@@ -127,6 +127,66 @@
         
         let ws = null;
         let streaming = false;
+        
+        // Throttle mousemove events to avoid overwhelming backend
+        let mousemoveThrottle = null;
+        const MOUSEMOVE_THROTTLE_MS = 16; // ~60fps for mouse movement
+        
+        // Map mouse button number to button name
+        function getButtonName(button) {
+            const buttonMap = {
+                0: 'left',
+                1: 'middle',
+                2: 'right'
+            };
+            return buttonMap[button] || 'left';
+        }
+        
+        // Reusable coordinate mapping function
+        function mapCoordinates(clientX, clientY) {
+            const rect = canvas.getBoundingClientRect();
+            const clickX = clientX - rect.left;
+            const clickY = clientY - rect.top;
+            
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            
+            const x = Math.round(clickX * scaleX);
+            const y = Math.round(clickY * scaleY);
+            
+            const boundedX = Math.max(0, Math.min(x, CANVAS_WIDTH - 1));
+            const boundedY = Math.max(0, Math.min(y, CANVAS_HEIGHT - 1));
+            
+            return { x: boundedX, y: boundedY };
+        }
+        
+        // Send mouse event to backend
+        function sendMouseEvent(type, event) {
+            if (!streaming || !ws || ws.readyState !== WebSocket.OPEN) {
+                return;
+            }
+            
+            const coords = mapCoordinates(event.clientX, event.clientY);
+            const message = {
+                type: type,
+                x: coords.x,
+                y: coords.y
+            };
+            
+            // Add button info for mouse events
+            if (event.button !== undefined) {
+                message.button = getButtonName(event.button);
+            }
+            
+            // Add wheel delta for wheel events
+            if (type === 'wheel') {
+                message.deltaX = event.deltaX || 0;
+                message.deltaY = event.deltaY || 0;
+                message.deltaZ = event.deltaZ || 0;
+            }
+            
+            ws.send(JSON.stringify(message));
+        }
 
         // WebSocket connection
         function connectWebSocket() {
@@ -198,52 +258,60 @@
             }
         });
 
-        // Canvas click handler - maps scaled coordinates to full resolution
+        // Prevent context menu on right click
+        canvas.addEventListener('contextmenu', function(event) {
+            event.preventDefault();
+            if (streaming) {
+                sendMouseEvent('click', event);
+            }
+        });
+        
+        // Mouse move handler with throttling
+        canvas.addEventListener('mousemove', function(event) {
+            if (!streaming || !ws || ws.readyState !== WebSocket.OPEN) {
+                return;
+            }
+            
+            // Throttle mousemove events
+            if (mousemoveThrottle) {
+                clearTimeout(mousemoveThrottle);
+            }
+            
+            mousemoveThrottle = setTimeout(function() {
+                sendMouseEvent('mousemove', event);
+            }, MOUSEMOVE_THROTTLE_MS);
+        });
+        
+        // Mouse down handler
+        canvas.addEventListener('mousedown', function(event) {
+            sendMouseEvent('mousedown', event);
+        });
+        
+        // Mouse up handler
+        canvas.addEventListener('mouseup', function(event) {
+            sendMouseEvent('mouseup', event);
+        });
+        
+        // Click handler (for backward compatibility)
         canvas.addEventListener('click', function(event) {
-            console.log('Canvas clicked!', 'streaming:', streaming, 'ws:', ws, 'readyState:', ws ? ws.readyState : 'null');
-            
-            if (!streaming) {
-                console.log('Not streaming, ignoring click');
-                return;
+            const coords = mapCoordinates(event.clientX, event.clientY);
+            sendMouseEvent('click', event);
+            statusDiv.textContent = `Click at (${coords.x}, ${coords.y})`;
+        });
+        
+        // Wheel/scroll handler
+        canvas.addEventListener('wheel', function(event) {
+            event.preventDefault(); // Prevent page scroll
+            sendMouseEvent('wheel', event);
+        });
+        
+        // Mouse leave handler (optional - can be used to stop mouse tracking)
+        canvas.addEventListener('mouseleave', function(event) {
+            // Clear any pending mousemove events
+            if (mousemoveThrottle) {
+                clearTimeout(mousemoveThrottle);
+                mousemoveThrottle = null;
             }
-            
-            if (!ws || ws.readyState !== WebSocket.OPEN) {
-                console.log('WebSocket not open, ignoring click');
-                return;
-            }
-            
-            // Get the bounding rectangle of the displayed canvas
-            const rect = canvas.getBoundingClientRect();
-            
-            // Calculate click position relative to the displayed canvas
-            const clickX = event.clientX - rect.left;
-            const clickY = event.clientY - rect.top;
-            
-            // Map from displayed size to internal canvas size (1920x1080)
-            // This accounts for the scaling applied via CSS
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
-            
-            const x = Math.round(clickX * scaleX);
-            const y = Math.round(clickY * scaleY);
-            
-            // Ensure coordinates are within bounds
-            const boundedX = Math.max(0, Math.min(x, CANVAS_WIDTH - 1));
-            const boundedY = Math.max(0, Math.min(y, CANVAS_HEIGHT - 1));
-            
-            const clickMessage = {
-                type: 'click',
-                x: boundedX,
-                y: boundedY
-            };
-            
-            console.log('Click on display:', clickX, clickY, 'Mapped to:', boundedX, boundedY);
-            console.log('Sending click message:', clickMessage);
-            
-            // Send click coordinates to backend (full resolution coordinates)
-            ws.send(JSON.stringify(clickMessage));
-            
-            statusDiv.textContent = `Click at (${boundedX}, ${boundedY})`;
         });
 
         // Initialize WebSocket connection on page load

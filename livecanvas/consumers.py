@@ -44,25 +44,93 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
             if message_type == 'start':
                 if not self.streaming:
                     self.streaming_task = asyncio.create_task(self.start_streaming())
+            elif message_type == 'mousemove':
+                await self.handle_mousemove(data)
+            elif message_type == 'mousedown':
+                await self.handle_mousedown(data)
+            elif message_type == 'mouseup':
+                await self.handle_mouseup(data)
             elif message_type == 'click':
                 await self.handle_click(data)
+            elif message_type == 'wheel':
+                await self.handle_wheel(data)
         except json.JSONDecodeError as e:
             print(f"JSON decode error: {e}")
 
-    async def handle_click(self, data: dict) -> None:
-        """Handle click events from client."""
+    async def handle_mousemove(self, data: dict) -> None:
+        """Handle mouse movement events from client."""
         x = data.get('x')
         y = data.get('y')
-        print(f"Click received: x={x}, y={y}")
         
         if x is not None and y is not None and self.browser_manager:
             browser_x = int(x)
             browser_y = int(y)
-            print(f"Clicking in browser at: ({browser_x}, {browser_y})")
             try:
-                await self.browser_manager.click(browser_x, browser_y)
+                await self.browser_manager.move_mouse(browser_x, browser_y)
+            except Exception as e:
+                print(f"Error moving mouse in browser: {e}")
+    
+    async def handle_mousedown(self, data: dict) -> None:
+        """Handle mouse down events from client."""
+        x = data.get('x')
+        y = data.get('y')
+        button = data.get('button', 'left')
+        
+        if x is not None and y is not None and self.browser_manager:
+            browser_x = int(x)
+            browser_y = int(y)
+            print(f"Mouse down in browser at: ({browser_x}, {browser_y}), button: {button}")
+            try:
+                await self.browser_manager.mouse_down(browser_x, browser_y, button)
+            except Exception as e:
+                print(f"Error with mouse down in browser: {e}")
+    
+    async def handle_mouseup(self, data: dict) -> None:
+        """Handle mouse up events from client."""
+        x = data.get('x')
+        y = data.get('y')
+        button = data.get('button', 'left')
+        
+        if x is not None and y is not None and self.browser_manager:
+            browser_x = int(x)
+            browser_y = int(y)
+            print(f"Mouse up in browser at: ({browser_x}, {browser_y}), button: {button}")
+            try:
+                await self.browser_manager.mouse_up(browser_x, browser_y, button)
+            except Exception as e:
+                print(f"Error with mouse up in browser: {e}")
+    
+    async def handle_click(self, data: dict) -> None:
+        """Handle click events from client."""
+        x = data.get('x')
+        y = data.get('y')
+        button = data.get('button', 'left')
+        print(f"Click received: x={x}, y={y}, button={button}")
+        
+        if x is not None and y is not None and self.browser_manager:
+            browser_x = int(x)
+            browser_y = int(y)
+            print(f"Clicking in browser at: ({browser_x}, {browser_y}), button: {button}")
+            try:
+                await self.browser_manager.click(browser_x, browser_y, button)
             except Exception as e:
                 print(f"Error clicking in browser: {e}")
+    
+    async def handle_wheel(self, data: dict) -> None:
+        """Handle wheel/scroll events from client."""
+        x = data.get('x')
+        y = data.get('y')
+        delta_x = data.get('deltaX', 0)
+        delta_y = data.get('deltaY', 0)
+        
+        if x is not None and y is not None and self.browser_manager:
+            browser_x = int(x)
+            browser_y = int(y)
+            print(f"Scrolling in browser at: ({browser_x}, {browser_y}), delta: ({delta_x}, {delta_y})")
+            try:
+                await self.browser_manager.scroll(browser_x, browser_y, delta_x, delta_y)
+            except Exception as e:
+                print(f"Error scrolling in browser: {e}")
 
     async def send_frame(self, frame_base64: str) -> None:
         """Send frame data to WebSocket client."""

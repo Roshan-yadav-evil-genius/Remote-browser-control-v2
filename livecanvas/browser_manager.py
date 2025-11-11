@@ -44,20 +44,108 @@ class BrowserManager:
         
         return self.page
     
-    async def click(self, x: int, y: int) -> None:
+    def _map_button(self, button: str) -> str:
         """
-        Click at specified coordinates in the browser.
+        Map button name to Playwright button name.
+        
+        Args:
+            button: Button name ('left', 'right', 'middle')
+            
+        Returns:
+            Playwright button name
+        """
+        button_map = {
+            'left': 'left',
+            'right': 'right',
+            'middle': 'middle'
+        }
+        return button_map.get(button.lower(), 'left')
+    
+    async def move_mouse(self, x: int, y: int) -> None:
+        """
+        Move mouse to specified coordinates in the browser.
         
         Args:
             x: X coordinate
             y: Y coordinate
             
         Raises:
+            Exception: If move fails
+        """
+        if not self.page:
+            raise RuntimeError("Browser page not initialized")
+        await self.page.mouse.move(x, y)
+    
+    async def mouse_down(self, x: int, y: int, button: str = 'left') -> None:
+        """
+        Press mouse button at specified coordinates.
+        
+        Args:
+            x: X coordinate
+            y: Y coordinate
+            button: Button name ('left', 'right', 'middle')
+            
+        Raises:
+            Exception: If mouse down fails
+        """
+        if not self.page:
+            raise RuntimeError("Browser page not initialized")
+        playwright_button = self._map_button(button)
+        await self.page.mouse.move(x, y)
+        await self.page.mouse.down(button=playwright_button)
+    
+    async def mouse_up(self, x: int, y: int, button: str = 'left') -> None:
+        """
+        Release mouse button at specified coordinates.
+        
+        Args:
+            x: X coordinate
+            y: Y coordinate
+            button: Button name ('left', 'right', 'middle')
+            
+        Raises:
+            Exception: If mouse up fails
+        """
+        if not self.page:
+            raise RuntimeError("Browser page not initialized")
+        playwright_button = self._map_button(button)
+        await self.page.mouse.move(x, y)
+        await self.page.mouse.up(button=playwright_button)
+    
+    async def click(self, x: int, y: int, button: str = 'left') -> None:
+        """
+        Click at specified coordinates in the browser.
+        
+        Args:
+            x: X coordinate
+            y: Y coordinate
+            button: Button name ('left', 'right', 'middle')
+            
+        Raises:
             Exception: If click fails
         """
         if not self.page:
             raise RuntimeError("Browser page not initialized")
-        await self.page.mouse.click(x, y)
+        playwright_button = self._map_button(button)
+        await self.page.mouse.click(x, y, button=playwright_button)
+    
+    async def scroll(self, x: int, y: int, delta_x: float = 0, delta_y: float = 0) -> None:
+        """
+        Scroll at specified coordinates.
+        
+        Args:
+            x: X coordinate
+            y: Y coordinate
+            delta_x: Horizontal scroll delta
+            delta_y: Vertical scroll delta
+            
+        Raises:
+            Exception: If scroll fails
+        """
+        if not self.page:
+            raise RuntimeError("Browser page not initialized")
+        await self.page.mouse.move(x, y)
+        await self.page.mouse.wheel(delta_x, delta_y)
     
     async def cleanup(self) -> None:
         """Clean up browser and Playwright instances."""
