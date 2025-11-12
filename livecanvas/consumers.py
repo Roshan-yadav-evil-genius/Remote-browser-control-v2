@@ -131,6 +131,9 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
             return
         
         try:
+            # Bring the page to front and make it active
+            await page.bring_to_front()
+            
             # Update all page-dependent components in one place
             if self.screenshot_streamer:
                 self.screenshot_streamer.set_page(page)
