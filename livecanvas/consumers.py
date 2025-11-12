@@ -11,10 +11,22 @@ from .event_handlers.keyboard_handler import KeyboardHandler
 from .controllers.mouse_controller import MouseController
 from .controllers.keyboard_controller import KeyboardController
 from .validators import MessageValidator
+from .websocket_message_sender import WebSocketMessageSender
+from .page_manager import PageManager
+from .navigation_manager import NavigationManager
+from .page_event_coordinator import PageEventCoordinator
 
 
 class VideoStreamConsumer(AsyncWebsocketConsumer):
-    """WebSocket consumer that handles video streaming via browser screenshots."""
+    """
+    WebSocket consumer that coordinates video streaming via browser screenshots.
+    
+    Acts as a Facade that delegates to specialized managers:
+    - WebSocketMessageSender: Message sending
+    - PageManager: Page operations (switch, create, close)
+    - NavigationManager: Browser navigation
+    - PageEventCoordinator: Page lifecycle events
+    """
     
     async def connect(self):
         """Handle WebSocket connection."""
@@ -23,20 +35,28 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
         self.browser_manager: BrowserManager = None
         self.streaming_task = None
         
+        # Initialize WebSocket message sender
+        self.message_sender = WebSocketMessageSender(self.send)
+        
         # Initialize controllers and streamer without pages (lazy initialization)
         self.mouse_controller = MouseController()
         self.keyboard_controller = KeyboardController()
+        
+        # Initialize screenshot streamer without page
+        self.screenshot_streamer = ScreenshotStreamer(
+            fps=StreamConfig.STREAMING_FPS
+        )
+        
+        # Initialize managers (will be fully initialized after browser_manager is created)
+        self.page_manager: PageManager = None
+        self.navigation_manager: NavigationManager = None
+        self.page_event_coordinator: PageEventCoordinator = None
         
         # Initialize message router with handlers
         self.message_router = MessageRouter(
             mouse_handler=MouseHandler(self.mouse_controller),
             keyboard_handler=KeyboardHandler(self.keyboard_controller),
             start_callback=None  # Already handled
-        )
-        
-        # Initialize screenshot streamer without page
-        self.screenshot_streamer = ScreenshotStreamer(
-            fps=StreamConfig.STREAMING_FPS
         )
 
     async def disconnect(self, close_code):
@@ -54,7 +74,7 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
             await self.browser_manager.cleanup()
 
     async def receive(self, text_data):
-        """Handle incoming WebSocket messages."""
+        """Handle incoming WebSocket messages and delegate to appropriate managers."""
         print(f"Received message: {text_data}")
         try:
             validator = MessageValidator()
@@ -64,227 +84,41 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
             # Handle 'start' message before router is initialized
             if message_type == 'start' and not self.streaming:
                 self.streaming_task = asyncio.create_task(self.start_streaming())
-            # Handle 'page_switch' message - needs access to browser_manager and controllers
+            # Handle 'page_switch' message - delegate to PageManager
             elif message_type == 'page_switch':
                 if 'page_id' in data:
-                    await self.switch_active_page(data['page_id'])
+                    if self.page_manager:
+                        await self.page_manager.switch_active_page(data['page_id'])
+                    else:
+                        await self.message_sender.send_error('Page manager not initialized')
                 else:
-                    await self.send_error('page_switch message missing page_id')
-            # Handle 'navigate' message - navigation commands
+                    await self.message_sender.send_error('page_switch message missing page_id')
+            # Handle 'navigate' message - delegate to NavigationManager
             elif message_type == 'navigate':
-                await self.handle_navigation(data)
-            # Handle 'new_tab' message - create new tab
+                if self.navigation_manager:
+                    await self.navigation_manager.handle_navigation(data)
+                else:
+                    await self.message_sender.send_error('Navigation manager not initialized')
+            # Handle 'new_tab' message - delegate to PageManager
             elif message_type == 'new_tab':
-                await self.create_new_tab()
-            # Handle 'close_tab' message - close a tab/page
+                if self.page_manager:
+                    await self.page_manager.create_new_tab()
+                else:
+                    await self.message_sender.send_error('Page manager not initialized')
+            # Handle 'close_tab' message - delegate to PageManager
             elif message_type == 'close_tab':
                 if 'page_id' in data:
-                    await self.close_tab(data['page_id'])
+                    if self.page_manager:
+                        await self.page_manager.close_tab(data['page_id'])
+                    else:
+                        await self.message_sender.send_error('Page manager not initialized')
                 else:
-                    await self.send_error('close_tab message missing page_id')
+                    await self.message_sender.send_error('close_tab message missing page_id')
             elif self.message_router:
                 await self.message_router.route(text_data)
         except (json.JSONDecodeError, ValueError) as e:
             print(f"Message error: {e}")
 
-    async def send_frame(self, frame_base64: str) -> None:
-        """Send frame data to WebSocket client."""
-        await self.send(text_data=json.dumps({
-            'type': 'frame',
-            'data': frame_base64
-        }))
-
-    async def send_error(self, message: str) -> None:
-        """Send error message to WebSocket client."""
-        await self.send(text_data=json.dumps({
-            'type': 'error',
-            'message': message
-        }))
-    
-    async def send_page_added(self, page_id: str) -> None:
-        """Send page added notification to WebSocket client."""
-        await self.send(text_data=json.dumps({
-            'type': 'page_added',
-            'page_id': page_id
-        }))
-    
-    async def send_page_removed(self, page_id: str) -> None:
-        """Send page removed notification to WebSocket client."""
-        await self.send(text_data=json.dumps({
-            'type': 'page_removed',
-            'page_id': page_id
-        }))
-    
-    async def send_pages_sync(self) -> None:
-        """Send initial page list sync to WebSocket client."""
-        if self.browser_manager:
-            page_ids = self.browser_manager.get_all_page_ids()
-            await self.send(text_data=json.dumps({
-                'type': 'pages_sync',
-                'page_ids': page_ids
-            }))
-    
-    async def switch_active_page(self, page_id: str) -> None:
-        """
-        Switch the active page for streaming and input handling.
-        Single Responsibility: This method coordinates updating all page-dependent components.
-        
-        Args:
-            page_id: UUID string of the page to switch to
-        """
-        if not self.browser_manager:
-            await self.send_error('Browser not initialized')
-            return
-        
-        # Get the page instance
-        page = self.browser_manager.get_page_by_id(page_id)
-        if not page:
-            await self.send_error(f'Page with ID {page_id} not found')
-            return
-        
-        try:
-            # Bring the page to front and make it active
-            await page.bring_to_front()
-            
-            # Update all page-dependent components in one place
-            if self.screenshot_streamer:
-                self.screenshot_streamer.set_page(page)
-            
-            if self.mouse_controller:
-                self.mouse_controller.page = page
-            
-            if self.keyboard_controller:
-                self.keyboard_controller.page = page
-            
-            # Update the main page reference
-            self.browser_manager.page = page
-            
-            # Send confirmation to frontend with current URL
-            current_url = page.url
-            await self.send(text_data=json.dumps({
-                'type': 'page_switched',
-                'page_id': page_id,
-                'url': current_url
-            }))
-            
-            print(f"[+] Switched to page: {page_id}")
-        except Exception as e:
-            print(f"Error switching page: {e}")
-            await self.send_error(f'Error switching page: {str(e)}')
-    
-    async def handle_navigation(self, data: dict) -> None:
-        """
-        Handle navigation commands (back, forward, refresh, goto).
-        
-        Args:
-            data: Navigation command data with 'action' and optional 'url'
-        """
-        if not self.browser_manager or not self.browser_manager.page:
-            await self.send_error('Browser not initialized or no active page')
-            return
-        
-        page = self.browser_manager.page
-        action = data.get('action')
-        
-        try:
-            if action == 'back':
-                await page.go_back()
-            elif action == 'forward':
-                await page.go_forward()
-            elif action == 'refresh':
-                await page.reload()
-            elif action == 'goto':
-                url = data.get('url')
-                if not url:
-                    await self.send_error('URL required for goto action')
-                    return
-                await page.goto(url, wait_until='commit')
-            else:
-                await self.send_error(f'Unknown navigation action: {action}')
-                return
-            
-            # Update address bar with current URL
-            current_url = page.url
-            await self.send(text_data=json.dumps({
-                'type': 'url_changed',
-                'url': current_url
-            }))
-            
-            print(f"[+] Navigation: {action}")
-        except Exception as e:
-            print(f"Error in navigation: {e}")
-            await self.send_error(f'Navigation error: {str(e)}')
-    
-    async def create_new_tab(self) -> None:
-        """
-        Create a new tab/page and navigate it to duckduckgo.com.
-        The page will be automatically tracked and switched to via page_added_callback.
-        """
-        if not self.browser_manager or not self.browser_manager.context:
-            await self.send_error('Browser not initialized')
-            return
-        
-        try:
-            # Create a new page in the existing context
-            # This will trigger the page_added_callback which will auto-switch to it
-            new_page = await self.browser_manager.context.new_page()
-            
-            # Navigate to duckduckgo.com
-            await new_page.goto('https://duckduckgo.com/', wait_until='commit')
-            
-            print(f"[+] Created new tab and navigated to duckduckgo.com")
-        except Exception as e:
-            print(f"Error creating new tab: {e}")
-            await self.send_error(f'Error creating new tab: {str(e)}')
-    
-    async def close_tab(self, page_id: str) -> None:
-        """
-        Close a tab/page by its ID.
-        If closing the active page, switch to another available page.
-        
-        Args:
-            page_id: UUID string of the page to close
-        """
-        if not self.browser_manager:
-            await self.send_error('Browser not initialized')
-            return
-        
-        # Get the page instance
-        page = self.browser_manager.get_page_by_id(page_id)
-        if not page:
-            await self.send_error(f'Page with ID {page_id} not found')
-            return
-        
-        # Check if this is the active page
-        is_active_page = (self.browser_manager.page == page)
-        
-        try:
-            # If closing the active page, switch to another page first to avoid errors
-            if is_active_page:
-                # Get all remaining pages (excluding the one we're about to close)
-                all_page_ids = self.browser_manager.get_all_page_ids()
-                remaining_page_ids = [pid for pid in all_page_ids if pid != page_id]
-                
-                if remaining_page_ids:
-                    # Switch to the last remaining page before closing
-                    await self.switch_active_page(remaining_page_ids[-1])
-                else:
-                    # No pages left, clear all page references before closing
-                    self.browser_manager.page = None
-                    if self.screenshot_streamer:
-                        self.screenshot_streamer.set_page(None)
-                    if self.mouse_controller:
-                        self.mouse_controller.page = None
-                    if self.keyboard_controller:
-                        self.keyboard_controller.page = None
-            
-            # Now close the page - this will trigger page_removed_callback to remove from dict
-            await page.close()
-            
-            print(f"[+] Closed tab: {page_id}")
-        except Exception as e:
-            print(f"Error closing tab: {e}")
-            await self.send_error(f'Error closing tab: {str(e)}')
 
     async def start_streaming(self):
         """Start browser and begin streaming screenshots."""
@@ -294,38 +128,39 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
         self.streaming = True
         
         try:
-            # Create callback functions for page events
-            # These are called from sync contexts (Playwright event handlers)
-            # so we schedule the async operations using create_task
-            def page_added_callback(page_id: str):
-                """Synchronous wrapper that schedules async operations for new pages."""
-                try:
-                    loop = asyncio.get_running_loop()
-                    # Send page_added notification
-                    loop.create_task(self.send_page_added(page_id))
-                    # Automatically switch to the new page
-                    loop.create_task(self.switch_active_page(page_id))
-                except RuntimeError:
-                    # If no event loop is running, create a new one (shouldn't happen)
-                    asyncio.create_task(self.send_page_added(page_id))
-                    asyncio.create_task(self.switch_active_page(page_id))
-            
-            def page_removed_callback(page_id: str):
-                """Synchronous wrapper that schedules async send_page_removed."""
-                try:
-                    loop = asyncio.get_running_loop()
-                    loop.create_task(self.send_page_removed(page_id))
-                except RuntimeError:
-                    # If no event loop is running, create a new one (shouldn't happen)
-                    asyncio.create_task(self.send_page_removed(page_id))
-            
-            # Initialize browser manager with callbacks and launch browser
+            # Initialize browser manager first (without callbacks yet)
             self.browser_manager = BrowserManager(
                 viewport_width=StreamConfig.CANVAS_WIDTH,
-                viewport_height=StreamConfig.CANVAS_HEIGHT,
-                page_added_callback=page_added_callback,
-                page_removed_callback=page_removed_callback
+                viewport_height=StreamConfig.CANVAS_HEIGHT
             )
+            
+            # Initialize managers that depend on browser_manager
+            self.page_manager = PageManager(
+                browser_manager=self.browser_manager,
+                screenshot_streamer=self.screenshot_streamer,
+                mouse_controller=self.mouse_controller,
+                keyboard_controller=self.keyboard_controller,
+                message_sender=self.message_sender
+            )
+            
+            self.navigation_manager = NavigationManager(
+                browser_manager=self.browser_manager,
+                message_sender=self.message_sender
+            )
+            
+            self.page_event_coordinator = PageEventCoordinator(
+                page_manager=self.page_manager,
+                message_sender=self.message_sender
+            )
+            
+            # Set up callbacks for page events
+            page_added_callback = self.page_event_coordinator.create_page_added_callback()
+            page_removed_callback = self.page_event_coordinator.create_page_removed_callback()
+            
+            # Update browser manager with callbacks
+            self.browser_manager.page_added_callback = page_added_callback
+            self.browser_manager.page_removed_callback = page_removed_callback
+            
             # Launch browser - first page will be added via callback and auto-switched
             await self.browser_manager.launch(
                 url=StreamConfig.BROWSER_URL,
@@ -335,16 +170,17 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
             # Send initial page list sync after browser launch if same 
             # browser was streamed from multiple clients then if user join 
             # late he gets all list of pages
-            await self.send_pages_sync()
+            page_ids = self.browser_manager.get_all_page_ids()
+            await self.message_sender.send_pages_sync(page_ids)
             
             # Start streaming - streamer will wait for page to be set via switch_active_page
             await self.screenshot_streamer.stream(
-                send_callback=self.send_frame
+                send_callback=self.message_sender.send_frame
             )
             
         except Exception as e:
             print(f"Error in streaming: {e}")
-            await self.send_error(f'Streaming error: {str(e)}')
+            await self.message_sender.send_error(f'Streaming error: {str(e)}')
         finally:
             self.streaming = False
             if self.browser_manager:
