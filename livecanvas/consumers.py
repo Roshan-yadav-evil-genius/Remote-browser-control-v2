@@ -70,6 +70,29 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
             'type': 'error',
             'message': message
         }))
+    
+    async def send_page_added(self, page_id: str) -> None:
+        """Send page added notification to WebSocket client."""
+        await self.send(text_data=json.dumps({
+            'type': 'page_added',
+            'page_id': page_id
+        }))
+    
+    async def send_page_removed(self, page_id: str) -> None:
+        """Send page removed notification to WebSocket client."""
+        await self.send(text_data=json.dumps({
+            'type': 'page_removed',
+            'page_id': page_id
+        }))
+    
+    async def send_pages_sync(self) -> None:
+        """Send initial page list sync to WebSocket client."""
+        if self.browser_manager:
+            page_ids = self.browser_manager.get_all_page_ids()
+            await self.send(text_data=json.dumps({
+                'type': 'pages_sync',
+                'page_ids': page_ids
+            }))
 
     async def start_streaming(self):
         """Start browser and begin streaming screenshots."""
@@ -79,15 +102,44 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
         self.streaming = True
         
         try:
-            # Initialize browser manager and launch browser
+            # Create callback functions for page events
+            # These are called from sync contexts (Playwright event handlers)
+            # so we schedule the async operations using create_task
+            def page_added_callback(page_id: str):
+                """Synchronous wrapper that schedules async send_page_added."""
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(self.send_page_added(page_id))
+                except RuntimeError:
+                    # If no event loop is running, create a new one (shouldn't happen)
+                    asyncio.create_task(self.send_page_added(page_id))
+            
+            def page_removed_callback(page_id: str):
+                """Synchronous wrapper that schedules async send_page_removed."""
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(self.send_page_removed(page_id))
+                except RuntimeError:
+                    # If no event loop is running, create a new one (shouldn't happen)
+                    asyncio.create_task(self.send_page_removed(page_id))
+            
+            # Initialize browser manager with callbacks and launch browser
             self.browser_manager = BrowserManager(
                 viewport_width=StreamConfig.CANVAS_WIDTH,
-                viewport_height=StreamConfig.CANVAS_HEIGHT
+                viewport_height=StreamConfig.CANVAS_HEIGHT,
+                page_added_callback=page_added_callback,
+                page_removed_callback=page_removed_callback
             )
             page = await self.browser_manager.launch(
                 url=StreamConfig.BROWSER_URL,
                 headless=StreamConfig.HEADLESS
             )
+            
+            # Send initial page list sync after browser launch if same 
+            # browser was streamed fro multipel clients then if user join 
+            # late he gett all list of pages
+
+            await self.send_pages_sync()
             
             # Initialize controllers
             self.mouse_controller = MouseController(page)

@@ -2,6 +2,7 @@ const canvas = document.getElementById('videoCanvas');
 const ctx = canvas.getContext('2d');
 const startBtn = document.getElementById('startBtn');
 const statusDiv = document.getElementById('status');
+const pagesListDiv = document.getElementById('pagesList');
 
 // Canvas dimensions (internal resolution)
 const CANVAS_WIDTH = 1920;
@@ -13,6 +14,7 @@ canvas.height = CANVAS_HEIGHT;
 
 let ws = null;
 let streaming = false;
+let activePageIds = new Set(); // Track active page IDs
 
 // Throttle mousemove events to avoid overwhelming backend
 let mousemoveThrottle = null;
@@ -68,6 +70,19 @@ function mapCoordinates(clientX, clientY) {
 	return { x: boundedX, y: boundedY };
 }
 
+// Update pages display UI
+function updatePagesDisplay() {
+	if (activePageIds.size === 0) {
+		pagesListDiv.textContent = 'None';
+		pagesListDiv.innerHTML = '<span class="no-pages">None</span>';
+	} else {
+		const pageIdsArray = Array.from(activePageIds);
+		pagesListDiv.innerHTML = pageIdsArray.map(pageId => 
+			`<span class="page-badge" title="Page ID: ${pageId}">${pageId.substring(0, 8)}...</span>`
+		).join(' ');
+	}
+}
+
 // WebSocket connection
 function connectWebSocket() {
 	const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -99,6 +114,24 @@ function connectWebSocket() {
 			streaming = false;
 			startBtn.disabled = false;
 			startBtn.textContent = 'Start';
+		} else if (data.type === 'page_added') {
+			// Add page ID to tracking set
+			if (data.page_id) {
+				activePageIds.add(data.page_id);
+				updatePagesDisplay();
+			}
+		} else if (data.type === 'page_removed') {
+			// Remove page ID from tracking set
+			if (data.page_id) {
+				activePageIds.delete(data.page_id);
+				updatePagesDisplay();
+			}
+		} else if (data.type === 'pages_sync') {
+			// Initialize/sync all page IDs
+			if (data.page_ids && Array.isArray(data.page_ids)) {
+				activePageIds = new Set(data.page_ids);
+			}
+			updatePagesDisplay();
 		}
 	};
 
@@ -112,6 +145,9 @@ function connectWebSocket() {
 		streaming = false;
 		startBtn.disabled = false;
 		startBtn.textContent = 'Start';
+		// Clear page tracking on disconnect
+		activePageIds.clear();
+		updatePagesDisplay();
 	};
 }
 

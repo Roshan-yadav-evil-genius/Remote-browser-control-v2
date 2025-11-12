@@ -1,19 +1,23 @@
 """Browser management for Playwright browser instances."""
 import uuid
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
-from typing import Optional
+from typing import Optional, Callable
 
 
 class BrowserManager:
     """Manages Playwright browser lifecycle only."""
     
-    def __init__(self, viewport_width: int = 640, viewport_height: int = 480):
+    def __init__(self, viewport_width: int = 640, viewport_height: int = 480,
+                 page_added_callback: Optional[Callable[[str], None]] = None,
+                 page_removed_callback: Optional[Callable[[str], None]] = None):
         """
         Initialize browser manager.
         
         Args:
             viewport_width: Browser viewport width
             viewport_height: Browser viewport height
+            page_added_callback: Optional callback function(page_id: str) called when a page is added
+            page_removed_callback: Optional callback function(page_id: str) called when a page is removed
         """
         self.viewport_width = viewport_width
         self.viewport_height = viewport_height
@@ -23,6 +27,8 @@ class BrowserManager:
         self.page: Optional[Page] = None
         self.pages: dict[str, Page] = {}  # Track all pages with UUID keys
         self._page_to_id: dict[Page, str] = {}  # Reverse mapping: Page -> UUID
+        self.page_added_callback = page_added_callback
+        self.page_removed_callback = page_removed_callback
     
     def _register_page(self, page: Page) -> str:
         """
@@ -39,6 +45,10 @@ class BrowserManager:
         self._page_to_id[page] = page_id
         print("[+] New Page Created with Id:",page_id)
         
+        # Call page_added callback if provided
+        if self.page_added_callback:
+            self.page_added_callback(page_id)
+        
         # Set up close listener to remove page from tracking when destroyed
         def on_close(_):
             if page_id in self.pages:
@@ -47,6 +57,9 @@ class BrowserManager:
                 del self._page_to_id[page]
             print("[+] Page Closed with Id:",page_id)
             
+            # Call page_removed callback if provided
+            if self.page_removed_callback:
+                self.page_removed_callback(page_id)
         
         page.on('close', on_close)
         return page_id

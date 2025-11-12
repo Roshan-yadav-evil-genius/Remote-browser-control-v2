@@ -23,7 +23,9 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
+    gap: 15px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
 }
 .canvas-container {
     width: 100%;
@@ -71,5 +73,47 @@ button:disabled {
 .status {
     text-align: center;
     color: #666;
+}
+.pages-status {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    background-color: #f9f9f9;
+    border-radius: 4px;
+    min-width: 200px;
+}
+.pages-label {
+    font-size: 12px;
+    font-weight: bold;
+    color: #666;
+    text-transform: uppercase;
+}
+.pages-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    justify-content: center;
+    align-items: center;
+    min-height: 20px;
+}
+.page-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    background-color: #4CAF50;
+    color: white;
+    border-radius: 12px;
+    font-size: 11px;
+    font-family: monospace;
+    cursor: default;
+}
+.page-badge:hover {
+    background-color: #45a049;
+}
+.no-pages {
+    color: #999;
+    font-style: italic;
+    font-size: 12px;
 }
 
