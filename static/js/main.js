@@ -84,22 +84,45 @@ function updatePagesDisplay() {
 		tabsListDiv.innerHTML = '<div class="no-tabs">No tabs open</div>';
 	} else {
 		const pageIdsArray = Array.from(activePageIds);
+		const showCloseButton = activePageIds.size > 1; // Only show close button if more than one tab
 		tabsListDiv.innerHTML = pageIdsArray.map(pageId => {
 			const isActive = pageId === currentPageId;
 			const activeClass = isActive ? ' active' : '';
 			const tabTitle = `Tab ${pageIdsArray.indexOf(pageId) + 1}`;
+			const closeButton = showCloseButton 
+				? `<button class="tab-close" data-page-id="${pageId}" title="Close tab">×</button>`
+				: '';
 			return `<div class="tab${activeClass}" data-page-id="${pageId}" title="Page ID: ${pageId}">
 				<span class="tab-title">${tabTitle}</span>
+				${closeButton}
 			</div>`;
 		}).join('');
 		
 		// Add click event listeners to all tabs
 		tabsListDiv.querySelectorAll('.tab').forEach(tab => {
-			tab.addEventListener('click', function() {
+			tab.addEventListener('click', function(e) {
+				// Don't switch if clicking the close button
+				if (e.target.classList.contains('tab-close')) {
+					return;
+				}
 				const pageId = this.getAttribute('data-page-id');
 				if (pageId && ws && ws.readyState === WebSocket.OPEN) {
 					ws.send(JSON.stringify({
 						type: 'page_switch',
+						page_id: pageId
+					}));
+				}
+			});
+		});
+		
+		// Add click event listeners to close buttons
+		tabsListDiv.querySelectorAll('.tab-close').forEach(closeBtn => {
+			closeBtn.addEventListener('click', function(e) {
+				e.stopPropagation(); // Prevent tab switch
+				const pageId = this.getAttribute('data-page-id');
+				if (pageId && ws && ws.readyState === WebSocket.OPEN) {
+					ws.send(JSON.stringify({
+						type: 'close_tab',
 						page_id: pageId
 					}));
 				}

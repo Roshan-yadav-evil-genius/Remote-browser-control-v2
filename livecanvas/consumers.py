@@ -76,6 +76,12 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
             # Handle 'new_tab' message - create new tab
             elif message_type == 'new_tab':
                 await self.create_new_tab()
+            # Handle 'close_tab' message - close a tab/page
+            elif message_type == 'close_tab':
+                if 'page_id' in data:
+                    await self.close_tab(data['page_id'])
+                else:
+                    await self.send_error('close_tab message missing page_id')
             elif self.message_router:
                 await self.message_router.route(text_data)
         except (json.JSONDecodeError, ValueError) as e:
@@ -230,6 +236,55 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             print(f"Error creating new tab: {e}")
             await self.send_error(f'Error creating new tab: {str(e)}')
+    
+    async def close_tab(self, page_id: str) -> None:
+        """
+        Close a tab/page by its ID.
+        If closing the active page, switch to another available page.
+        
+        Args:
+            page_id: UUID string of the page to close
+        """
+        if not self.browser_manager:
+            await self.send_error('Browser not initialized')
+            return
+        
+        # Get the page instance
+        page = self.browser_manager.get_page_by_id(page_id)
+        if not page:
+            await self.send_error(f'Page with ID {page_id} not found')
+            return
+        
+        # Check if this is the active page
+        is_active_page = (self.browser_manager.page == page)
+        
+        try:
+            # If closing the active page, switch to another page first to avoid errors
+            if is_active_page:
+                # Get all remaining pages (excluding the one we're about to close)
+                all_page_ids = self.browser_manager.get_all_page_ids()
+                remaining_page_ids = [pid for pid in all_page_ids if pid != page_id]
+                
+                if remaining_page_ids:
+                    # Switch to the last remaining page before closing
+                    await self.switch_active_page(remaining_page_ids[-1])
+                else:
+                    # No pages left, clear all page references before closing
+                    self.browser_manager.page = None
+                    if self.screenshot_streamer:
+                        self.screenshot_streamer.set_page(None)
+                    if self.mouse_controller:
+                        self.mouse_controller.page = None
+                    if self.keyboard_controller:
+                        self.keyboard_controller.page = None
+            
+            # Now close the page - this will trigger page_removed_callback to remove from dict
+            await page.close()
+            
+            print(f"[+] Closed tab: {page_id}")
+        except Exception as e:
+            print(f"Error closing tab: {e}")
+            await self.send_error(f'Error closing tab: {str(e)}')
 
     async def start_streaming(self):
         """Start browser and begin streaming screenshots."""
