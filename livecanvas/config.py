@@ -19,5 +19,5 @@ class StreamConfig:
     STREAMING_FPS: float = 15.0
     
     # Browser settings
-    HEADLESS: bool = False
+    HEADLESS: bool = True
 

@@ -2,9 +2,9 @@
 from typing import Optional
 from playwright.async_api import Page
 from .browser_manager import BrowserManager
-from .screenshot_streamer import ScreenshotStreamer
-from .controllers.mouse_controller import MouseController
-from .controllers.keyboard_controller import KeyboardController
+from ..streaming.screenshot_streamer import ScreenshotStreamer
+from ..controllers.mouse_controller import MouseController
+from ..controllers.keyboard_controller import KeyboardController
 from .websocket_message_sender import WebSocketMessageSender
 
 

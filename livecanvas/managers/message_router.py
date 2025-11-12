@@ -1,8 +1,8 @@
 """Message routing for WebSocket messages."""
 from typing import Dict, Any, Optional, Callable, Awaitable
-from .event_handlers.mouse_handler import MouseHandler
-from .event_handlers.keyboard_handler import KeyboardHandler
-from .validators import MessageValidator
+from ..event_handlers.mouse_handler import MouseHandler
+from ..event_handlers.keyboard_handler import KeyboardHandler
+from ..utils.validators import MessageValidator
 
 
 class MessageRouter:

@@ -2,19 +2,21 @@
 import json
 import asyncio
 from channels.generic.websocket import AsyncWebsocketConsumer
-from .browser_manager import BrowserManager
-from .screenshot_streamer import ScreenshotStreamer
+from .managers import (
+    BrowserManager,
+    PageManager,
+    NavigationManager,
+    PageEventCoordinator,
+    WebSocketMessageSender,
+    MessageRouter
+)
+from .streaming import ScreenshotStreamer
 from .config import StreamConfig
-from .message_router import MessageRouter
 from .event_handlers.mouse_handler import MouseHandler
 from .event_handlers.keyboard_handler import KeyboardHandler
 from .controllers.mouse_controller import MouseController
 from .controllers.keyboard_controller import KeyboardController
-from .validators import MessageValidator
-from .websocket_message_sender import WebSocketMessageSender
-from .page_manager import PageManager
-from .navigation_manager import NavigationManager
-from .page_event_coordinator import PageEventCoordinator
+from .utils import MessageValidator
 
 
 class VideoStreamConsumer(AsyncWebsocketConsumer):
