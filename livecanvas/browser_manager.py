@@ -1,5 +1,6 @@
 """Browser management for Playwright browser instances."""
-from playwright.async_api import async_playwright, Browser, Page
+import uuid
+from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 from typing import Optional
 
 
@@ -18,7 +19,37 @@ class BrowserManager:
         self.viewport_height = viewport_height
         self.playwright = None
         self.browser: Optional[Browser] = None
+        self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
+        self.pages: dict[str, Page] = {}  # Track all pages with UUID keys
+        self._page_to_id: dict[Page, str] = {}  # Reverse mapping: Page -> UUID
+    
+    def _register_page(self, page: Page) -> str:
+        """
+        Register a page with a UUID and set up close listener.
+        
+        Args:
+            page: Page instance to register
+            
+        Returns:
+            UUID string assigned to the page
+        """
+        page_id = uuid.uuid4().hex
+        self.pages[page_id] = page
+        self._page_to_id[page] = page_id
+        print("[+] New Page Created with Id:",page_id)
+        
+        # Set up close listener to remove page from tracking when destroyed
+        def on_close(_):
+            if page_id in self.pages:
+                del self.pages[page_id]
+            if page in self._page_to_id:
+                del self._page_to_id[page]
+            print("[+] Page Closed with Id:",page_id)
+            
+        
+        page.on('close', on_close)
+        return page_id
     
     async def launch(self, url: str, headless: bool = False) -> Page:
         """
@@ -37,11 +68,18 @@ class BrowserManager:
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(headless=headless)
         
-        # Create a new page with viewport matching canvas dimensions
-        self.page = await self.browser.new_page(viewport={
+        # Create browser context with viewport matching canvas dimensions
+        self.context = await self.browser.new_context(viewport={
             'width': self.viewport_width,
             'height': self.viewport_height
         })
+        
+        # Set up context event listener BEFORE creating pages
+        # This will catch all pages including the initial one
+        self.context.on('page', lambda page: self._register_page(page))
+        
+        # Create a new page (viewport is inherited from context)
+        self.page = await self.context.new_page()
         
         # Navigate to URL - don't wait for full page load, start streaming immediately
         # Using 'commit' means we return as soon as navigation is committed
@@ -57,6 +95,13 @@ class BrowserManager:
                 print(f"Error closing page: {e}")
             self.page = None
         
+        if self.context:
+            try:
+                await self.context.close()
+            except Exception as e:
+                print(f"Error closing context: {e}")
+            self.context = None
+        
         if self.browser:
             try:
                 await self.browser.close()
@@ -70,4 +115,29 @@ class BrowserManager:
             except Exception as e:
                 print(f"Error stopping playwright: {e}")
             self.playwright = None
+        
+        # Clear page tracking dictionaries
+        self.pages.clear()
+        self._page_to_id.clear()
+    
+    def get_page_id(self, page: Page) -> Optional[str]:
+        """
+        Get UUID for a given Page instance.
+        
+        Args:
+            page: Page instance to look up
+            
+        Returns:
+            UUID string if page is tracked, None otherwise
+        """
+        return self._page_to_id.get(page)
+    
+    def get_all_page_ids(self) -> list[str]:
+        """
+        Get list of all active page IDs.
+        
+        Returns:
+            List of UUID strings for all tracked pages
+        """
+        return list(self.pages.keys())
 
