@@ -217,7 +217,7 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
     
     async def create_new_tab(self) -> None:
         """
-        Create a new tab/page and navigate it to google.com.
+        Create a new tab/page and navigate it to duckduckgo.com.
         The page will be automatically tracked and switched to via page_added_callback.
         """
         if not self.browser_manager or not self.browser_manager.context:
@@ -229,10 +229,10 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
             # This will trigger the page_added_callback which will auto-switch to it
             new_page = await self.browser_manager.context.new_page()
             
-            # Navigate to google.com
-            await new_page.goto('https://www.google.com', wait_until='commit')
+            # Navigate to duckduckgo.com
+            await new_page.goto('https://duckduckgo.com/', wait_until='commit')
             
-            print(f"[+] Created new tab and navigated to google.com")
+            print(f"[+] Created new tab and navigated to duckduckgo.com")
         except Exception as e:
             print(f"Error creating new tab: {e}")
             await self.send_error(f'Error creating new tab: {str(e)}')

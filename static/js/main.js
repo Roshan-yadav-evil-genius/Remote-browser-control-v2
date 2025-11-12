@@ -6,6 +6,7 @@ const tabsListDiv = document.getElementById('tabsList');
 const backBtn = document.getElementById('backBtn');
 const forwardBtn = document.getElementById('forwardBtn');
 const refreshBtn = document.getElementById('refreshBtn');
+const homeBtn = document.getElementById('homeBtn');
 const addressBar = document.getElementById('addressBar');
 const newTabBtn = document.getElementById('newTabBtn');
 
@@ -245,6 +246,16 @@ refreshBtn.addEventListener('click', function() {
 		ws.send(JSON.stringify({
 			type: 'navigate',
 			action: 'refresh'
+		}));
+	}
+});
+
+homeBtn.addEventListener('click', function() {
+	if (ws && ws.readyState === WebSocket.OPEN && streaming) {
+		ws.send(JSON.stringify({
+			type: 'navigate',
+			action: 'goto',
+			url: 'https://duckduckgo.com/'
 		}));
 	}
 });
