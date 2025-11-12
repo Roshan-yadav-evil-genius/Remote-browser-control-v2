@@ -70,6 +70,12 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
                     await self.switch_active_page(data['page_id'])
                 else:
                     await self.send_error('page_switch message missing page_id')
+            # Handle 'navigate' message - navigation commands
+            elif message_type == 'navigate':
+                await self.handle_navigation(data)
+            # Handle 'new_tab' message - create new tab
+            elif message_type == 'new_tab':
+                await self.create_new_tab()
             elif self.message_router:
                 await self.message_router.route(text_data)
         except (json.JSONDecodeError, ValueError) as e:
@@ -147,16 +153,83 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
             # Update the main page reference
             self.browser_manager.page = page
             
-            # Send confirmation to frontend
+            # Send confirmation to frontend with current URL
+            current_url = page.url
             await self.send(text_data=json.dumps({
                 'type': 'page_switched',
-                'page_id': page_id
+                'page_id': page_id,
+                'url': current_url
             }))
             
             print(f"[+] Switched to page: {page_id}")
         except Exception as e:
             print(f"Error switching page: {e}")
             await self.send_error(f'Error switching page: {str(e)}')
+    
+    async def handle_navigation(self, data: dict) -> None:
+        """
+        Handle navigation commands (back, forward, refresh, goto).
+        
+        Args:
+            data: Navigation command data with 'action' and optional 'url'
+        """
+        if not self.browser_manager or not self.browser_manager.page:
+            await self.send_error('Browser not initialized or no active page')
+            return
+        
+        page = self.browser_manager.page
+        action = data.get('action')
+        
+        try:
+            if action == 'back':
+                await page.go_back()
+            elif action == 'forward':
+                await page.go_forward()
+            elif action == 'refresh':
+                await page.reload()
+            elif action == 'goto':
+                url = data.get('url')
+                if not url:
+                    await self.send_error('URL required for goto action')
+                    return
+                await page.goto(url, wait_until='commit')
+            else:
+                await self.send_error(f'Unknown navigation action: {action}')
+                return
+            
+            # Update address bar with current URL
+            current_url = page.url
+            await self.send(text_data=json.dumps({
+                'type': 'url_changed',
+                'url': current_url
+            }))
+            
+            print(f"[+] Navigation: {action}")
+        except Exception as e:
+            print(f"Error in navigation: {e}")
+            await self.send_error(f'Navigation error: {str(e)}')
+    
+    async def create_new_tab(self) -> None:
+        """
+        Create a new tab/page and navigate it to google.com.
+        The page will be automatically tracked and switched to via page_added_callback.
+        """
+        if not self.browser_manager or not self.browser_manager.context:
+            await self.send_error('Browser not initialized')
+            return
+        
+        try:
+            # Create a new page in the existing context
+            # This will trigger the page_added_callback which will auto-switch to it
+            new_page = await self.browser_manager.context.new_page()
+            
+            # Navigate to google.com
+            await new_page.goto('https://www.google.com', wait_until='commit')
+            
+            print(f"[+] Created new tab and navigated to google.com")
+        except Exception as e:
+            print(f"Error creating new tab: {e}")
+            await self.send_error(f'Error creating new tab: {str(e)}')
 
     async def start_streaming(self):
         """Start browser and begin streaming screenshots."""

@@ -2,7 +2,12 @@ const canvas = document.getElementById('videoCanvas');
 const ctx = canvas.getContext('2d');
 const startBtn = document.getElementById('startBtn');
 const statusDiv = document.getElementById('status');
-const pagesListDiv = document.getElementById('pagesList');
+const tabsListDiv = document.getElementById('tabsList');
+const backBtn = document.getElementById('backBtn');
+const forwardBtn = document.getElementById('forwardBtn');
+const refreshBtn = document.getElementById('refreshBtn');
+const addressBar = document.getElementById('addressBar');
+const newTabBtn = document.getElementById('newTabBtn');
 
 // Canvas dimensions (internal resolution)
 const CANVAS_WIDTH = 1920;
@@ -24,8 +29,10 @@ const MOUSEMOVE_THROTTLE_MS = 16; // ~60fps for mouse movement
 // Scale canvas to fit viewport while maintaining aspect ratio
 function scaleCanvas() {
 	const container = canvas.parentElement;
-	const maxWidth = window.innerWidth - 100; // Leave some margin
-	const maxHeight = window.innerHeight - 200; // Leave space for controls
+	const toolbarHeight = document.querySelector('.browser-toolbar').offsetHeight;
+	const tabsHeight = document.querySelector('.tabs-container').offsetHeight;
+	const maxWidth = window.innerWidth;
+	const maxHeight = window.innerHeight - toolbarHeight - tabsHeight;
 
 	const aspectRatio = CANVAS_WIDTH / CANVAS_HEIGHT;
 	let displayWidth = maxWidth;
@@ -71,22 +78,24 @@ function mapCoordinates(clientX, clientY) {
 	return { x: boundedX, y: boundedY };
 }
 
-// Update pages display UI
+// Update tabs display UI
 function updatePagesDisplay() {
 	if (activePageIds.size === 0) {
-		pagesListDiv.textContent = 'None';
-		pagesListDiv.innerHTML = '<span class="no-pages">None</span>';
+		tabsListDiv.innerHTML = '<div class="no-tabs">No tabs open</div>';
 	} else {
 		const pageIdsArray = Array.from(activePageIds);
-		pagesListDiv.innerHTML = pageIdsArray.map(pageId => {
+		tabsListDiv.innerHTML = pageIdsArray.map(pageId => {
 			const isActive = pageId === currentPageId;
 			const activeClass = isActive ? ' active' : '';
-			return `<button class="page-badge${activeClass}" data-page-id="${pageId}" title="Page ID: ${pageId}">${pageId.substring(0, 8)}...</button>`;
-		}).join(' ');
+			const tabTitle = `Tab ${pageIdsArray.indexOf(pageId) + 1}`;
+			return `<div class="tab${activeClass}" data-page-id="${pageId}" title="Page ID: ${pageId}">
+				<span class="tab-title">${tabTitle}</span>
+			</div>`;
+		}).join('');
 		
-		// Add click event listeners to all page badges
-		pagesListDiv.querySelectorAll('.page-badge').forEach(button => {
-			button.addEventListener('click', function() {
+		// Add click event listeners to all tabs
+		tabsListDiv.querySelectorAll('.tab').forEach(tab => {
+			tab.addEventListener('click', function() {
 				const pageId = this.getAttribute('data-page-id');
 				if (pageId && ws && ws.readyState === WebSocket.OPEN) {
 					ws.send(JSON.stringify({
@@ -112,6 +121,9 @@ function connectWebSocket() {
 		streaming = true;
 		startBtn.disabled = true;
 		startBtn.textContent = 'Streaming...';
+		// Enable navigation buttons
+		backBtn.disabled = false;
+		forwardBtn.disabled = false;
 		// Auto-focus canvas when streaming starts
 		canvas.focus();
 	};
@@ -154,6 +166,15 @@ function connectWebSocket() {
 				currentPageId = data.page_id;
 				updatePagesDisplay();
 			}
+			// Update address bar with current URL if provided
+			if (data.url) {
+				addressBar.value = data.url;
+			}
+		} else if (data.type === 'url_changed') {
+			// Update address bar with current URL
+			if (data.url) {
+				addressBar.value = data.url;
+			}
 		}
 	};
 
@@ -171,8 +192,67 @@ function connectWebSocket() {
 		activePageIds.clear();
 		currentPageId = null;
 		updatePagesDisplay();
+		// Disable navigation buttons
+		backBtn.disabled = true;
+		forwardBtn.disabled = true;
 	};
 }
+
+// Navigation button handlers
+backBtn.addEventListener('click', function() {
+	if (ws && ws.readyState === WebSocket.OPEN && streaming) {
+		ws.send(JSON.stringify({
+			type: 'navigate',
+			action: 'back'
+		}));
+	}
+});
+
+forwardBtn.addEventListener('click', function() {
+	if (ws && ws.readyState === WebSocket.OPEN && streaming) {
+		ws.send(JSON.stringify({
+			type: 'navigate',
+			action: 'forward'
+		}));
+	}
+});
+
+refreshBtn.addEventListener('click', function() {
+	if (ws && ws.readyState === WebSocket.OPEN && streaming) {
+		ws.send(JSON.stringify({
+			type: 'navigate',
+			action: 'refresh'
+		}));
+	}
+});
+
+// Address bar handler
+addressBar.addEventListener('keypress', function(event) {
+	if (event.key === 'Enter') {
+		const url = addressBar.value.trim();
+		if (url && ws && ws.readyState === WebSocket.OPEN && streaming) {
+			// Add protocol if missing
+			let fullUrl = url;
+			if (!url.startsWith('http://') && !url.startsWith('https://')) {
+				fullUrl = 'https://' + url;
+			}
+			ws.send(JSON.stringify({
+				type: 'navigate',
+				action: 'goto',
+				url: fullUrl
+			}));
+		}
+	}
+});
+
+// New tab button handler
+newTabBtn.addEventListener('click', function() {
+	if (ws && ws.readyState === WebSocket.OPEN && streaming) {
+		ws.send(JSON.stringify({
+			type: 'new_tab'
+		}));
+	}
+});
 
 // Start streaming
 startBtn.addEventListener('click', function () {

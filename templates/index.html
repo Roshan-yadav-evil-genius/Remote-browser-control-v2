@@ -3,22 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Stream with Canvas Click</title>
+    <title>Browser Stream</title>
     {% load static %}
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
 </head>
 <body>
-    <div class="container">
-        <div class="controls-container">
-            <div class="controls">
-                <button id="startBtn">Start</button>
+    <div class="browser-window">
+        <!-- Browser Toolbar -->
+        <div class="browser-toolbar">
+            <div class="nav-buttons">
+                <button id="backBtn" class="nav-btn" title="Back" disabled>
+                    <span class="nav-icon">←</span>
+                </button>
+                <button id="forwardBtn" class="nav-btn" title="Forward" disabled>
+                    <span class="nav-icon">→</span>
+                </button>
+                <button id="refreshBtn" class="nav-btn" title="Refresh">
+                    <span class="nav-icon">⟳</span>
+                </button>
             </div>
-            <div class="status" id="status">Disconnected</div>
-            <div class="pages-status" id="pagesStatus">
-                <div class="pages-label">Active Pages:</div>
-                <div class="pages-list" id="pagesList">None</div>
+            <div class="address-bar-container">
+                <input type="text" id="addressBar" class="address-bar" placeholder="Enter URL or search..." />
+            </div>
+            <div class="toolbar-actions">
+                <button id="startBtn" class="action-btn">Start</button>
+                <div class="status-indicator" id="status">Disconnected</div>
             </div>
         </div>
+        
+        <!-- Tabs Bar -->
+        <div class="tabs-container">
+            <div class="tabs-list" id="tabsList">
+                <div class="no-tabs">No tabs open</div>
+            </div>
+            <button id="newTabBtn" class="new-tab-btn" title="New Tab">
+                <span class="new-tab-icon">+</span>
+            </button>
+        </div>
+        
+        <!-- Content Area -->
         <div class="canvas-container">
             <canvas id="videoCanvas" width="1920" height="1080" tabindex="0"></canvas>
         </div>
