@@ -43,12 +43,9 @@ class BrowserManager:
             'height': self.viewport_height
         })
         
-        # Navigate to URL
-        await self.page.goto(url)
-        
-        # Wait for page to load
-        await self.page.wait_for_load_state('networkidle')
-        
+        # Navigate to URL - don't wait for full page load, start streaming immediately
+        # Using 'commit' means we return as soon as navigation is committed
+        await self.page.goto(url, wait_until='commit')
         return self.page
     
     async def cleanup(self) -> None:
