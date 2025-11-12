@@ -1,1 +1,0 @@
-daphne -p 7979 livecanvas.asgi:application
