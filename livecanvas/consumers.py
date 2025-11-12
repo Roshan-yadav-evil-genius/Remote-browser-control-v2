@@ -45,15 +45,21 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
         """Handle incoming WebSocket messages."""
         print(f"Received message: {text_data}")
         try:
-            if self.message_router:
+            validator = MessageValidator()
+            data = validator.validate_json(text_data)
+            message_type = validator.validate_message_type(data)
+            
+            # Handle 'start' message before router is initialized
+            if message_type == 'start' and not self.streaming:
+                self.streaming_task = asyncio.create_task(self.start_streaming())
+            # Handle 'page_switch' message - needs access to browser_manager and controllers
+            elif message_type == 'page_switch':
+                if 'page_id' in data:
+                    await self.switch_active_page(data['page_id'])
+                else:
+                    await self.send_error('page_switch message missing page_id')
+            elif self.message_router:
                 await self.message_router.route(text_data)
-            else:
-                # Handle 'start' message before router is initialized
-                validator = MessageValidator()
-                data = validator.validate_json(text_data)
-                message_type = validator.validate_message_type(data)
-                if message_type == 'start' and not self.streaming:
-                    self.streaming_task = asyncio.create_task(self.start_streaming())
         except (json.JSONDecodeError, ValueError) as e:
             print(f"Message error: {e}")
 
@@ -93,6 +99,49 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
                 'type': 'pages_sync',
                 'page_ids': page_ids
             }))
+    
+    async def switch_active_page(self, page_id: str) -> None:
+        """
+        Switch the active page for streaming and input handling.
+        Single Responsibility: This method coordinates updating all page-dependent components.
+        
+        Args:
+            page_id: UUID string of the page to switch to
+        """
+        if not self.browser_manager:
+            await self.send_error('Browser not initialized')
+            return
+        
+        # Get the page instance
+        page = self.browser_manager.get_page_by_id(page_id)
+        if not page:
+            await self.send_error(f'Page with ID {page_id} not found')
+            return
+        
+        try:
+            # Update all page-dependent components in one place
+            if self.screenshot_streamer:
+                self.screenshot_streamer.set_page(page)
+            
+            if self.mouse_controller:
+                self.mouse_controller.page = page
+            
+            if self.keyboard_controller:
+                self.keyboard_controller.page = page
+            
+            # Update the main page reference
+            self.browser_manager.page = page
+            
+            # Send confirmation to frontend
+            await self.send(text_data=json.dumps({
+                'type': 'page_switched',
+                'page_id': page_id
+            }))
+            
+            print(f"[+] Switched to page: {page_id}")
+        except Exception as e:
+            print(f"Error switching page: {e}")
+            await self.send_error(f'Error switching page: {str(e)}')
 
     async def start_streaming(self):
         """Start browser and begin streaming screenshots."""
@@ -161,6 +210,14 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
                 page=page,
                 fps=StreamConfig.STREAMING_FPS
             )
+            
+            # Set initial active page ID
+            initial_page_id = self.browser_manager.get_page_id(page)
+            if initial_page_id:
+                await self.send(text_data=json.dumps({
+                    'type': 'page_switched',
+                    'page_id': initial_page_id
+                }))
             
             # Start streaming
             await self.screenshot_streamer.stream(

@@ -15,6 +15,7 @@ canvas.height = CANVAS_HEIGHT;
 let ws = null;
 let streaming = false;
 let activePageIds = new Set(); // Track active page IDs
+let currentPageId = null; // Track currently active page being streamed
 
 // Throttle mousemove events to avoid overwhelming backend
 let mousemoveThrottle = null;
@@ -77,9 +78,24 @@ function updatePagesDisplay() {
 		pagesListDiv.innerHTML = '<span class="no-pages">None</span>';
 	} else {
 		const pageIdsArray = Array.from(activePageIds);
-		pagesListDiv.innerHTML = pageIdsArray.map(pageId => 
-			`<span class="page-badge" title="Page ID: ${pageId}">${pageId.substring(0, 8)}...</span>`
-		).join(' ');
+		pagesListDiv.innerHTML = pageIdsArray.map(pageId => {
+			const isActive = pageId === currentPageId;
+			const activeClass = isActive ? ' active' : '';
+			return `<button class="page-badge${activeClass}" data-page-id="${pageId}" title="Page ID: ${pageId}">${pageId.substring(0, 8)}...</button>`;
+		}).join(' ');
+		
+		// Add click event listeners to all page badges
+		pagesListDiv.querySelectorAll('.page-badge').forEach(button => {
+			button.addEventListener('click', function() {
+				const pageId = this.getAttribute('data-page-id');
+				if (pageId && ws && ws.readyState === WebSocket.OPEN) {
+					ws.send(JSON.stringify({
+						type: 'page_switch',
+						page_id: pageId
+					}));
+				}
+			});
+		});
 	}
 }
 
@@ -132,6 +148,12 @@ function connectWebSocket() {
 				activePageIds = new Set(data.page_ids);
 			}
 			updatePagesDisplay();
+		} else if (data.type === 'page_switched') {
+			// Update current page ID and refresh display
+			if (data.page_id) {
+				currentPageId = data.page_id;
+				updatePagesDisplay();
+			}
 		}
 	};
 
@@ -147,6 +169,7 @@ function connectWebSocket() {
 		startBtn.textContent = 'Start';
 		// Clear page tracking on disconnect
 		activePageIds.clear();
+		currentPageId = null;
 		updatePagesDisplay();
 	};
 }

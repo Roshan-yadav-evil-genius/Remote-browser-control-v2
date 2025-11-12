@@ -153,4 +153,16 @@ class BrowserManager:
             List of UUID strings for all tracked pages
         """
         return list(self.pages.keys())
+    
+    def get_page_by_id(self, page_id: str) -> Optional[Page]:
+        """
+        Get page instance by its UUID.
+        
+        Args:
+            page_id: UUID string of the page
+            
+        Returns:
+            Page instance if found, None otherwise
+        """
+        return self.pages.get(page_id)
 

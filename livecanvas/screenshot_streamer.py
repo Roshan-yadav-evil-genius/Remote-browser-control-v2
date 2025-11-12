@@ -71,4 +71,13 @@ class ScreenshotStreamer:
     def stop(self) -> None:
         """Stop streaming."""
         self.streaming = False
+    
+    def set_page(self, page: Page) -> None:
+        """
+        Update the page instance for streaming.
+        
+        Args:
+            page: New Playwright Page instance to stream from
+        """
+        self.page = page
 
