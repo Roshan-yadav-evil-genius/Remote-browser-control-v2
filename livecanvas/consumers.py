@@ -21,11 +21,23 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
         await self.accept()
         self.streaming = False
         self.browser_manager: BrowserManager = None
-        self.screenshot_streamer: ScreenshotStreamer = None
-        self.mouse_controller: MouseController = None
-        self.keyboard_controller: KeyboardController = None
-        self.message_router: MessageRouter = None
         self.streaming_task = None
+        
+        # Initialize controllers and streamer without pages (lazy initialization)
+        self.mouse_controller = MouseController()
+        self.keyboard_controller = KeyboardController()
+        
+        # Initialize message router with handlers
+        self.message_router = MessageRouter(
+            mouse_handler=MouseHandler(self.mouse_controller),
+            keyboard_handler=KeyboardHandler(self.keyboard_controller),
+            start_callback=None  # Already handled
+        )
+        
+        # Initialize screenshot streamer without page
+        self.screenshot_streamer = ScreenshotStreamer(
+            fps=StreamConfig.STREAMING_FPS
+        )
 
     async def disconnect(self, close_code):
         """Handle WebSocket disconnection."""
@@ -155,13 +167,17 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
             # These are called from sync contexts (Playwright event handlers)
             # so we schedule the async operations using create_task
             def page_added_callback(page_id: str):
-                """Synchronous wrapper that schedules async send_page_added."""
+                """Synchronous wrapper that schedules async operations for new pages."""
                 try:
                     loop = asyncio.get_running_loop()
+                    # Send page_added notification
                     loop.create_task(self.send_page_added(page_id))
+                    # Automatically switch to the new page
+                    loop.create_task(self.switch_active_page(page_id))
                 except RuntimeError:
                     # If no event loop is running, create a new one (shouldn't happen)
                     asyncio.create_task(self.send_page_added(page_id))
+                    asyncio.create_task(self.switch_active_page(page_id))
             
             def page_removed_callback(page_id: str):
                 """Synchronous wrapper that schedules async send_page_removed."""
@@ -179,47 +195,18 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
                 page_added_callback=page_added_callback,
                 page_removed_callback=page_removed_callback
             )
-            page = await self.browser_manager.launch(
+            # Launch browser - first page will be added via callback and auto-switched
+            await self.browser_manager.launch(
                 url=StreamConfig.BROWSER_URL,
                 headless=StreamConfig.HEADLESS
             )
             
             # Send initial page list sync after browser launch if same 
-            # browser was streamed fro multipel clients then if user join 
-            # late he gett all list of pages
-
+            # browser was streamed from multiple clients then if user join 
+            # late he gets all list of pages
             await self.send_pages_sync()
             
-            # Initialize controllers
-            self.mouse_controller = MouseController(page)
-            self.keyboard_controller = KeyboardController(page)
-            
-            # Initialize event handlers
-            mouse_handler = MouseHandler(self.mouse_controller)
-            keyboard_handler = KeyboardHandler(self.keyboard_controller)
-            
-            # Initialize message router
-            self.message_router = MessageRouter(
-                mouse_handler=mouse_handler,
-                keyboard_handler=keyboard_handler,
-                start_callback=None  # Already handled
-            )
-            
-            # Initialize screenshot streamer
-            self.screenshot_streamer = ScreenshotStreamer(
-                page=page,
-                fps=StreamConfig.STREAMING_FPS
-            )
-            
-            # Set initial active page ID
-            initial_page_id = self.browser_manager.get_page_id(page)
-            if initial_page_id:
-                await self.send(text_data=json.dumps({
-                    'type': 'page_switched',
-                    'page_id': initial_page_id
-                }))
-            
-            # Start streaming
+            # Start streaming - streamer will wait for page to be set via switch_active_page
             await self.screenshot_streamer.stream(
                 send_callback=self.send_frame
             )

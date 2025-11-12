@@ -9,12 +9,12 @@ class KeyboardController:
     
     _VALID_MODIFIERS = {'Control', 'Alt', 'Shift', 'Meta'}
     
-    def __init__(self, page: Page):
+    def __init__(self, page: Optional[Page] = None):
         """
         Initialize keyboard controller.
         
         Args:
-            page: Playwright Page instance
+            page: Playwright Page instance (optional, can be set later)
         """
         self.page = page
         self._key_mapper = KeyMapper()
@@ -22,7 +22,7 @@ class KeyboardController:
     def _ensure_page(self) -> None:
         """Ensure page is initialized."""
         if not self.page:
-            raise RuntimeError("Browser page not initialized")
+            raise RuntimeError("Browser page not initialized. Page must be set before using keyboard controller.")
     
     async def key_down(self, key: str, code: Optional[str] = None, modifiers: Optional[List[str]] = None) -> None:
         """

@@ -7,12 +7,12 @@ from ..mappers.button_mapper import ButtonMapper
 class MouseController:
     """Handles mouse operations in the browser."""
     
-    def __init__(self, page: Page):
+    def __init__(self, page: Optional[Page] = None):
         """
         Initialize mouse controller.
         
         Args:
-            page: Playwright Page instance
+            page: Playwright Page instance (optional, can be set later)
         """
         self.page = page
         self._button_mapper = ButtonMapper()
@@ -20,7 +20,7 @@ class MouseController:
     def _ensure_page(self) -> None:
         """Ensure page is initialized."""
         if not self.page:
-            raise RuntimeError("Browser page not initialized")
+            raise RuntimeError("Browser page not initialized. Page must be set before using mouse controller.")
     
     async def move(self, x: int, y: int) -> None:
         """

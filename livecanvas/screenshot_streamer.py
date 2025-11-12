@@ -8,12 +8,12 @@ from playwright.async_api import Page
 class ScreenshotStreamer:
     """Handles screenshot capture and encoding for streaming."""
     
-    def __init__(self, page: Page, fps: float = 15.0, quality: int = 85):
+    def __init__(self, page: Optional[Page] = None, fps: float = 15.0, quality: int = 85):
         """
         Initialize screenshot streamer.
         
         Args:
-            page: Playwright Page instance
+            page: Playwright Page instance (optional, can be set later)
             fps: Frames per second for streaming
             quality: JPEG quality (1-100)
         """
@@ -29,7 +29,12 @@ class ScreenshotStreamer:
         
         Returns:
             Base64-encoded JPEG image string
+            
+        Raises:
+            RuntimeError: If page is not set
         """
+        if not self.page:
+            raise RuntimeError("Page not set. Cannot capture screenshot.")
         screenshot_bytes = await self.page.screenshot(
             type='jpeg',
             quality=self.quality
@@ -55,11 +60,20 @@ class ScreenshotStreamer:
                 if stop_event and stop_event.is_set():
                     break
                 
+                # Wait for page to be set if not available yet
                 if not self.page:
-                    break
+                    await asyncio.sleep(0.1)  # Wait a bit before checking again
+                    continue
                 
-                frame_base64 = await self.capture_screenshot()
-                await send_callback(frame_base64)
+                try:
+                    frame_base64 = await self.capture_screenshot()
+                    await send_callback(frame_base64)
+                except RuntimeError as e:
+                    # Page might have been removed, wait and retry
+                    if "Page not set" in str(e):
+                        await asyncio.sleep(0.1)
+                        continue
+                    raise
                 
                 await asyncio.sleep(self.frame_delay)
         except asyncio.CancelledError:
