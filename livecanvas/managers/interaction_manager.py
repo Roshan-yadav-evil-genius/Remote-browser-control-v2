@@ -40,18 +40,12 @@ class InteractionManager:
         """
         self._page = page
         
-        # Update all components with the new page
-        if self.screenshot_streamer:
-            self.screenshot_streamer.set_page(page)
-        
-        if self.mouse_controller:
-            self.mouse_controller.page = page
-        
-        if self.keyboard_controller:
-            self.keyboard_controller.page = page
+        # Update all components with the new page (components are always initialized)
+        self.screenshot_streamer.set_page(page)
+        self.mouse_controller.page = page
+        self.keyboard_controller.page = page
     
     def stop_streaming(self) -> None:
         """Stop screenshot streaming."""
-        if self.screenshot_streamer:
-            self.screenshot_streamer.stop()
+        self.screenshot_streamer.stop()
 

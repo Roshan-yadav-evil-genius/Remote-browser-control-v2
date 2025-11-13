@@ -1,12 +1,13 @@
 """Page management operations."""
 from typing import Optional
 from playwright.async_api import Page
+from .base_manager import BaseManager
 from .browser_manager import BrowserManager
 from .interaction_manager import InteractionManager
 from .websocket_message_sender import WebSocketMessageSender
 
 
-class PageManager:
+class PageManager(BaseManager):
     """Manages page operations: switching, creating, and closing tabs."""
     
     def __init__(
@@ -23,9 +24,8 @@ class PageManager:
             interaction_manager: InteractionManager instance
             message_sender: WebSocketMessageSender instance
         """
-        self.browser_manager = browser_manager
+        super().__init__(browser_manager, message_sender)
         self.interaction_manager = interaction_manager
-        self.message_sender = message_sender
     
     async def switch_active_page(self, page_id: str) -> None:
         """
@@ -35,17 +35,11 @@ class PageManager:
         Args:
             page_id: UUID string of the page to switch to
         """
-        if not self.browser_manager:
-            await self.message_sender.send_error('Browser not initialized')
-            return
-        
-        # Get the page instance
-        page = self.browser_manager.get_page_by_id(page_id)
+        page = await self._get_page_or_error(page_id)
         if not page:
-            await self.message_sender.send_error(f'Page with ID {page_id} not found')
             return
         
-        try:
+        async def _switch_operation():
             # Bring the page to front and make it active
             await page.bring_to_front()
             
@@ -58,33 +52,40 @@ class PageManager:
             # Send confirmation to frontend with current URL
             current_url = page.url
             await self.message_sender.send_page_switched(page_id, current_url)
-            
-            print(f"[+] Switched to page: {page_id}")
-        except Exception as e:
-            print(f"Error switching page: {e}")
-            await self.message_sender.send_error(f'Error switching page: {str(e)}')
+        
+        await self._execute_with_error_handling(
+            operation_name='switch_active_page',
+            operation_func=_switch_operation,
+            error_message_template='Error switching page: {error}',
+            success_message=f"[+] Switched to page: {page_id}"
+        )
     
     async def create_new_tab(self) -> None:
         """
         Create a new tab/page and navigate it to duckduckgo.com.
         The page will be automatically tracked and switched to via page_added_callback.
         """
-        if not self.browser_manager or not self.browser_manager.context:
-            await self.message_sender.send_error('Browser not initialized')
+        if not await self._ensure_browser_initialized():
             return
         
-        try:
+        if not self.browser_manager.context:
+            await self.message_sender.send_error('Browser context not initialized')
+            return
+        
+        async def _create_tab_operation():
             # Create a new page in the existing context
             # This will trigger the page_added_callback which will auto-switch to it
             new_page = await self.browser_manager.context.new_page()
             
             # Navigate to duckduckgo.com
             await new_page.goto('https://duckduckgo.com/', wait_until='commit')
-            
-            print(f"[+] Created new tab and navigated to duckduckgo.com")
-        except Exception as e:
-            print(f"Error creating new tab: {e}")
-            await self.message_sender.send_error(f'Error creating new tab: {str(e)}')
+        
+        await self._execute_with_error_handling(
+            operation_name='create_new_tab',
+            operation_func=_create_tab_operation,
+            error_message_template='Error creating new tab: {error}',
+            success_message="[+] Created new tab and navigated to duckduckgo.com"
+        )
     
     async def close_tab(self, page_id: str) -> None:
         """
@@ -94,20 +95,14 @@ class PageManager:
         Args:
             page_id: UUID string of the page to close
         """
-        if not self.browser_manager:
-            await self.message_sender.send_error('Browser not initialized')
-            return
-        
-        # Get the page instance
-        page = self.browser_manager.get_page_by_id(page_id)
+        page = await self._get_page_or_error(page_id)
         if not page:
-            await self.message_sender.send_error(f'Page with ID {page_id} not found')
             return
         
         # Check if this is the active page
         is_active_page = (self.browser_manager.page == page)
         
-        try:
+        async def _close_tab_operation():
             # If closing the active page, switch to another page first to avoid errors
             if is_active_page:
                 # Get all remaining pages (excluding the one we're about to close)
@@ -124,9 +119,11 @@ class PageManager:
             
             # Now close the page - this will trigger page_removed_callback to remove from dict
             await page.close()
-            
-            print(f"[+] Closed tab: {page_id}")
-        except Exception as e:
-            print(f"Error closing tab: {e}")
-            await self.message_sender.send_error(f'Error closing tab: {str(e)}')
+        
+        await self._execute_with_error_handling(
+            operation_name='close_tab',
+            operation_func=_close_tab_operation,
+            error_message_template='Error closing tab: {error}',
+            success_message=f"[+] Closed tab: {page_id}"
+        )
 

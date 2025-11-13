@@ -14,7 +14,6 @@ from .managers import (
 from .config import StreamConfig
 from .event_handlers.mouse_handler import MouseHandler
 from .event_handlers.keyboard_handler import KeyboardHandler
-from .utils import MessageValidator
 
 
 class VideoStreamConsumer(AsyncWebsocketConsumer):
@@ -67,51 +66,79 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
         if self.browser_manager:
             await self.browser_manager.cleanup()
 
+    async def _ensure_manager_initialized(self, manager, manager_name: str) -> bool:
+        """
+        Ensure a manager is initialized, send error if not.
+        
+        Args:
+            manager: Manager instance to check
+            manager_name: Name of the manager for error message
+            
+        Returns:
+            True if initialized, False otherwise
+        """
+        if not manager:
+            await self.message_sender.send_error(f'{manager_name} not initialized')
+            return False
+        return True
+    
     async def receive(self, text_data):
         """Handle incoming WebSocket messages and delegate to appropriate managers."""
         print(f"Received message: {text_data}")
+        
+        # Let MessageRouter handle validation and routing for most messages
+        # Only handle special cases that need consumer-level logic
         try:
-            validator = MessageValidator()
-            data = validator.validate_json(text_data)
-            message_type = validator.validate_message_type(data)
+            # Quick parse to check message type (MessageRouter will validate properly)
+            data = json.loads(text_data)
+            message_type = data.get('type')
             
-            # Handle 'start' message before router is initialized
+            # Handle 'start' message - needs consumer state check
             if message_type == 'start' and not self.streaming:
                 self.streaming_task = asyncio.create_task(self.start_streaming())
-            # Handle 'page_switch' message - delegate to PageManager
-            elif message_type == 'page_switch':
-                if 'page_id' in data:
-                    if self.page_manager:
-                        await self.page_manager.switch_active_page(data['page_id'])
-                    else:
-                        await self.message_sender.send_error('Page manager not initialized')
-                else:
+                return
+            
+            # Handle page management messages - need manager checks
+            if message_type == 'page_switch':
+                if not await self._ensure_manager_initialized(self.page_manager, 'Page manager'):
+                    return
+                if 'page_id' not in data:
                     await self.message_sender.send_error('page_switch message missing page_id')
-            # Handle 'navigate' message - delegate to NavigationManager
-            elif message_type == 'navigate':
-                if self.navigation_manager:
-                    await self.navigation_manager.handle_navigation(data)
-                else:
-                    await self.message_sender.send_error('Navigation manager not initialized')
-            # Handle 'new_tab' message - delegate to PageManager
-            elif message_type == 'new_tab':
-                if self.page_manager:
-                    await self.page_manager.create_new_tab()
-                else:
-                    await self.message_sender.send_error('Page manager not initialized')
-            # Handle 'close_tab' message - delegate to PageManager
-            elif message_type == 'close_tab':
-                if 'page_id' in data:
-                    if self.page_manager:
-                        await self.page_manager.close_tab(data['page_id'])
-                    else:
-                        await self.message_sender.send_error('Page manager not initialized')
-                else:
+                    return
+                await self.page_manager.switch_active_page(data['page_id'])
+                return
+            
+            if message_type == 'new_tab':
+                if not await self._ensure_manager_initialized(self.page_manager, 'Page manager'):
+                    return
+                await self.page_manager.create_new_tab()
+                return
+            
+            if message_type == 'close_tab':
+                if not await self._ensure_manager_initialized(self.page_manager, 'Page manager'):
+                    return
+                if 'page_id' not in data:
                     await self.message_sender.send_error('close_tab message missing page_id')
-            elif self.message_router:
+                    return
+                await self.page_manager.close_tab(data['page_id'])
+                return
+            
+            # Handle navigation message
+            if message_type == 'navigate':
+                if not await self._ensure_manager_initialized(self.navigation_manager, 'Navigation manager'):
+                    return
+                await self.navigation_manager.handle_navigation(data)
+                return
+            
+            # Route all other messages through MessageRouter (handles validation)
+            if self.message_router:
                 await self.message_router.route(text_data)
-        except (json.JSONDecodeError, ValueError) as e:
+        except json.JSONDecodeError as e:
             print(f"Message error: {e}")
+            await self.message_sender.send_error(f'Invalid JSON: {str(e)}')
+        except Exception as e:
+            print(f"Unexpected error in receive: {e}")
+            await self.message_sender.send_error(f'Error processing message: {str(e)}')
 
 
     async def start_streaming(self):
