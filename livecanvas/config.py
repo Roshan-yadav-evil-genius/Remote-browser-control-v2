@@ -10,7 +10,9 @@ class StreamConfig:
         "https://shawon9324.github.io/apps/keytester/",
         "https://cuberto.com/blog/cuberto-mouse-follower/",
         "https://www.w3schools.com/tags/att_a_target.asp",
-        "https://codepen.io/calebnance/full/nXPaKN"
+        "https://codepen.io/calebnance/full/nXPaKN",
+        "https://www.checkmytimezone.com/",
+        "https://iplocation.io/my-location"
     ]
     
     # Browser configuration

@@ -98,8 +98,10 @@ class BrowserManager:
         self.context = await self.browser.new_context(viewport={
             'width': self.viewport_width,
             'height': self.viewport_height
-        })
-        
+        },
+            user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.3"
+        )
+
         # Set up context event listener BEFORE creating pages
         # This will catch all pages including the initial one
         self.context.on('page', lambda page: self._register_page(page))
