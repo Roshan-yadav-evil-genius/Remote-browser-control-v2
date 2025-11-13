@@ -24,4 +24,5 @@ class StreamConfig:
     
     # Browser settings
     HEADLESS: bool = True
+    TESTING: bool = True  # If True, opens all TESTING_URLS in separate tabs on launch
 
