@@ -2,9 +2,7 @@
 from typing import Optional
 from playwright.async_api import Page
 from .browser_manager import BrowserManager
-from ..streaming.screenshot_streamer import ScreenshotStreamer
-from ..controllers.mouse_controller import MouseController
-from ..controllers.keyboard_controller import KeyboardController
+from .interaction_manager import InteractionManager
 from .websocket_message_sender import WebSocketMessageSender
 
 
@@ -14,9 +12,7 @@ class PageManager:
     def __init__(
         self,
         browser_manager: BrowserManager,
-        screenshot_streamer: ScreenshotStreamer,
-        mouse_controller: MouseController,
-        keyboard_controller: KeyboardController,
+        interaction_manager: InteractionManager,
         message_sender: WebSocketMessageSender
     ):
         """
@@ -24,15 +20,11 @@ class PageManager:
         
         Args:
             browser_manager: BrowserManager instance
-            screenshot_streamer: ScreenshotStreamer instance
-            mouse_controller: MouseController instance
-            keyboard_controller: KeyboardController instance
+            interaction_manager: InteractionManager instance
             message_sender: WebSocketMessageSender instance
         """
         self.browser_manager = browser_manager
-        self.screenshot_streamer = screenshot_streamer
-        self.mouse_controller = mouse_controller
-        self.keyboard_controller = keyboard_controller
+        self.interaction_manager = interaction_manager
         self.message_sender = message_sender
     
     async def switch_active_page(self, page_id: str) -> None:
@@ -57,15 +49,8 @@ class PageManager:
             # Bring the page to front and make it active
             await page.bring_to_front()
             
-            # Update all page-dependent components in one place
-            if self.screenshot_streamer:
-                self.screenshot_streamer.set_page(page)
-            
-            if self.mouse_controller:
-                self.mouse_controller.page = page
-            
-            if self.keyboard_controller:
-                self.keyboard_controller.page = page
+            # Update all page-dependent components atomically via interaction manager
+            self.interaction_manager.set_page(page)
             
             # Update the main page reference
             self.browser_manager.page = page
@@ -135,12 +120,7 @@ class PageManager:
                 else:
                     # No pages left, clear all page references before closing
                     self.browser_manager.page = None
-                    if self.screenshot_streamer:
-                        self.screenshot_streamer.set_page(None)
-                    if self.mouse_controller:
-                        self.mouse_controller.page = None
-                    if self.keyboard_controller:
-                        self.keyboard_controller.page = None
+                    self.interaction_manager.set_page(None)
             
             # Now close the page - this will trigger page_removed_callback to remove from dict
             await page.close()

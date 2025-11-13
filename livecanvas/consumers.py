@@ -8,14 +8,12 @@ from .managers import (
     NavigationManager,
     PageEventCoordinator,
     WebSocketMessageSender,
-    MessageRouter
+    MessageRouter,
+    InteractionManager
 )
-from .streaming import ScreenshotStreamer
 from .config import StreamConfig
 from .event_handlers.mouse_handler import MouseHandler
 from .event_handlers.keyboard_handler import KeyboardHandler
-from .controllers.mouse_controller import MouseController
-from .controllers.keyboard_controller import KeyboardController
 from .utils import MessageValidator
 
 
@@ -40,24 +38,18 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
         # Initialize WebSocket message sender
         self.message_sender = WebSocketMessageSender(self.send)
         
-        # Initialize controllers and streamer without pages (lazy initialization)
-        self.mouse_controller = MouseController()
-        self.keyboard_controller = KeyboardController()
-        
-        # Initialize screenshot streamer without page
-        self.screenshot_streamer = ScreenshotStreamer(
-            fps=StreamConfig.STREAMING_FPS
-        )
+        # Initialize interaction manager (creates components internally)
+        self.interaction_manager = InteractionManager()
         
         # Initialize managers (will be fully initialized after browser_manager is created)
         self.page_manager: PageManager = None
         self.navigation_manager: NavigationManager = None
         self.page_event_coordinator: PageEventCoordinator = None
         
-        # Initialize message router with handlers
+        # Initialize message router with handlers from interaction manager
         self.message_router = MessageRouter(
-            mouse_handler=MouseHandler(self.mouse_controller),
-            keyboard_handler=KeyboardHandler(self.keyboard_controller),
+            mouse_handler=MouseHandler(self.interaction_manager.mouse_controller),
+            keyboard_handler=KeyboardHandler(self.interaction_manager.keyboard_controller),
             start_callback=None  # Already handled
         )
 
@@ -70,8 +62,8 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
                 await self.streaming_task
             except asyncio.CancelledError:
                 pass
-        if self.screenshot_streamer:
-            self.screenshot_streamer.stop()
+        if self.interaction_manager:
+            self.interaction_manager.stop_streaming()
         if self.browser_manager:
             await self.browser_manager.cleanup()
 
@@ -139,9 +131,7 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
             # Initialize managers that depend on browser_manager
             self.page_manager = PageManager(
                 browser_manager=self.browser_manager,
-                screenshot_streamer=self.screenshot_streamer,
-                mouse_controller=self.mouse_controller,
-                keyboard_controller=self.keyboard_controller,
+                interaction_manager=self.interaction_manager,
                 message_sender=self.message_sender
             )
             
@@ -176,7 +166,7 @@ class VideoStreamConsumer(AsyncWebsocketConsumer):
             await self.message_sender.send_pages_sync(page_ids)
             
             # Start streaming - streamer will wait for page to be set via switch_active_page
-            await self.screenshot_streamer.stream(
+            await self.interaction_manager.screenshot_streamer.stream(
                 send_callback=self.message_sender.send_frame
             )
             
