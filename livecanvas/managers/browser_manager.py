@@ -79,7 +79,20 @@ class BrowserManager:
             Exception: If browser launch or navigation fails
         """
         self.playwright = await async_playwright().start()
-        self.browser = await self.playwright.chromium.launch(headless=headless)
+        
+        # Browser launch arguments to disable background throttling
+        # These prevent the browser from throttling when in background
+        browser_args = [
+            "--disable-renderer-backgrounding",
+            "--disable-background-timer-throttling",
+            "--disable-backgrounding-occluded-windows",
+            "--disable-features=CalculateNativeWinOcclusion",
+        ]
+        
+        self.browser = await self.playwright.chromium.launch(
+            headless=headless,
+            args=browser_args
+        )
         
         # Create browser context with viewport matching canvas dimensions
         self.context = await self.browser.new_context(viewport={
