@@ -9,7 +9,8 @@ class StreamConfig:
     TESTING_URLS: List[str] = [
         "https://shawon9324.github.io/apps/keytester/",
         "https://cuberto.com/blog/cuberto-mouse-follower/",
-        "https://www.w3schools.com/tags/att_a_target.asp"
+        "https://www.w3schools.com/tags/att_a_target.asp",
+        "https://codepen.io/calebnance/full/nXPaKN"
     ]
     
     # Browser configuration
@@ -17,6 +18,7 @@ class StreamConfig:
     CANVAS_WIDTH: int = 1920
     CANVAS_HEIGHT: int = 1080
     STREAMING_FPS: float = 15.0
+    STREAMING_QUALITY: int = 40  # JPEG quality (1-100), lower = less bandwidth, faster streaming
     
     # Browser settings
     HEADLESS: bool = True

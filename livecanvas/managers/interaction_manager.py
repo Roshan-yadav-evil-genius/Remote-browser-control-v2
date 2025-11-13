@@ -10,17 +10,19 @@ from ..config import StreamConfig
 class InteractionManager:
     """Manages all user interaction components for a single page."""
     
-    def __init__(self, fps: float = None):
+    def __init__(self, fps: float = None, quality: int = None):
         """
         Initialize interaction manager.
         Creates all internal components (streamer, controllers) internally.
         
         Args:
             fps: Frames per second for streaming (defaults to StreamConfig.STREAMING_FPS)
+            quality: JPEG quality for screenshots (defaults to StreamConfig.STREAMING_QUALITY)
         """
         # Create components internally
         self.screenshot_streamer = ScreenshotStreamer(
-            fps=fps if fps is not None else StreamConfig.STREAMING_FPS
+            fps=fps if fps is not None else StreamConfig.STREAMING_FPS,
+            quality=quality if quality is not None else StreamConfig.STREAMING_QUALITY
         )
         self.mouse_controller = MouseController()
         self.keyboard_controller = KeyboardController()
