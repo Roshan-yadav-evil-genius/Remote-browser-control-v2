@@ -46,7 +46,7 @@ class MessageRouter:
         if message_type == 'start':
             if self.start_callback:
                 await self.start_callback()
-        elif message_type in ['mousemove', 'mousedown', 'mouseup', 'click', 'wheel']:
+        elif message_type in ['mousemove', 'mousedown', 'mouseup', 'wheel']:
             await self._route_mouse_event(message_type, data)
         elif message_type in ['keydown', 'keyup']:
             await self._route_keyboard_event(message_type, data)
@@ -70,7 +70,6 @@ class MessageRouter:
             'mousemove': self.mouse_handler.handle_mousemove,
             'mousedown': self.mouse_handler.handle_mousedown,
             'mouseup': self.mouse_handler.handle_mouseup,
-            'click': self.mouse_handler.handle_click,
             'wheel': self.mouse_handler.handle_wheel,
         }
         

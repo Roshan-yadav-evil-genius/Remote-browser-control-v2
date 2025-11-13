@@ -63,15 +63,6 @@ class MouseHandler(BaseEventHandler):
         button = data.get('button', 'left')
         await self.mouse_controller.mouse_up(x, y, button)
     
-    async def handle_click(self, data: Dict) -> None:
-        """Handle click events."""
-        if not self.mouse_controller:
-            return
-        
-        x, y = self._validate_coordinates(data)
-        button = data.get('button', 'left')
-        await self.mouse_controller.click(x, y, button)
-    
     async def handle_wheel(self, data: Dict) -> None:
         """Handle wheel/scroll events."""
         if not self.mouse_controller:

@@ -330,9 +330,7 @@ function sendMouseEvent(type, event) {
 // Prevent context menu on right click
 canvas.addEventListener('contextmenu', function (event) {
 	event.preventDefault();
-	if (streaming) {
-		sendMouseEvent('click', event);
-	}
+	// Right click is handled by mousedown/mouseup events
 });
 
 // Mouse move handler with throttling
@@ -359,13 +357,6 @@ canvas.addEventListener('mousedown', function (event) {
 // Mouse up handler
 canvas.addEventListener('mouseup', function (event) {
 	sendMouseEvent('mouseup', event);
-});
-
-// Click handler (for backward compatibility)
-canvas.addEventListener('click', function (event) {
-	const coords = mapCoordinates(event.clientX, event.clientY);
-	sendMouseEvent('click', event);
-	statusDiv.textContent = `Click at (${coords.x}, ${coords.y})`;
 });
 
 // Wheel/scroll handler
