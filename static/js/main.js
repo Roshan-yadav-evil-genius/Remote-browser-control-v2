@@ -138,6 +138,9 @@ function connectWebSocket() {
 	const wsUrl = `${protocol}//${window.location.host}/ws/video/`;
 
 	ws = new WebSocket(wsUrl);
+	
+	// Set binary type to handle binary frame data
+	ws.binaryType = 'blob';  // Use 'blob' for easier handling, or 'arraybuffer' for raw bytes
 
 	ws.onopen = function () {
 		statusDiv.textContent = 'Connected';
@@ -153,15 +156,44 @@ function connectWebSocket() {
 	};
 
 	ws.onmessage = function (event) {
-		const data = JSON.parse(event.data);
-
-		if (data.type === 'frame') {
-			const img = new Image();
-			img.onload = function () {
-				ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-			};
-			img.src = 'data:image/jpeg;base64,' + data.data;
-		} else if (data.type === 'error') {
+		// Check if message is binary (frame data) or text (control message)
+		if (event.data instanceof Blob || event.data instanceof ArrayBuffer) {
+			// Binary message = frame data (raw JPEG bytes)
+			handleBinaryFrame(event.data);
+		} else {
+			// Text message = control message (JSON)
+			const data = JSON.parse(event.data);
+			handleControlMessage(data);
+		}
+	};
+	
+	// Handle binary frame data
+	function handleBinaryFrame(binaryData) {
+		// Create Blob from binary data
+		const blob = binaryData instanceof Blob 
+			? binaryData 
+			: new Blob([binaryData], { type: 'image/jpeg' });
+		
+		// Create object URL from blob
+		const imageUrl = URL.createObjectURL(blob);
+		
+		// Create image and draw to canvas
+		const img = new Image();
+		img.onload = function () {
+			ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+			// Revoke object URL to free memory
+			URL.revokeObjectURL(imageUrl);
+		};
+		img.onerror = function () {
+			console.error('Error loading frame image');
+			URL.revokeObjectURL(imageUrl);
+		};
+		img.src = imageUrl;
+	}
+	
+	// Handle text control messages
+	function handleControlMessage(data) {
+		if (data.type === 'error') {
 			statusDiv.textContent = 'Error: ' + data.message;
 			streaming = false;
 			startBtn.disabled = false;
@@ -200,7 +232,7 @@ function connectWebSocket() {
 				addressBar.value = data.url;
 			}
 		}
-	};
+	}
 
 	ws.onerror = function (error) {
 		statusDiv.textContent = 'WebSocket error';

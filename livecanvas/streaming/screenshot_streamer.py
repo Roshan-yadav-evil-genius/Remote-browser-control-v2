@@ -1,12 +1,11 @@
 """Screenshot capture and streaming functionality."""
-import base64
 import asyncio
 from typing import Awaitable, Callable, Optional
 from playwright.async_api import Page
 
 
 class ScreenshotStreamer:
-    """Handles screenshot capture and encoding for streaming."""
+    """Handles screenshot capture and streaming."""
     
     def __init__(self, page: Optional[Page] = None, fps: float = 15.0, quality: int = 85):
         """
@@ -23,12 +22,12 @@ class ScreenshotStreamer:
         self.frame_delay = 1.0 / fps
         self.streaming = False
     
-    async def capture_screenshot(self) -> str:
+    async def capture_screenshot(self) -> bytes:
         """
-        Capture screenshot and encode as base64 string.
+        Capture screenshot and return raw JPEG bytes.
         
         Returns:
-            Base64-encoded JPEG image string
+            Raw JPEG image bytes
             
         Raises:
             RuntimeError: If page is not set
@@ -39,18 +38,18 @@ class ScreenshotStreamer:
             type='jpeg',
             quality=self.quality
         )
-        return base64.b64encode(screenshot_bytes).decode('utf-8')
+        return screenshot_bytes
     
     async def stream(
         self,
-        send_callback: Callable[[str], Awaitable[None]],
+        send_callback: Callable[[bytes], Awaitable[None]],
         stop_event: Optional[asyncio.Event] = None
     ) -> None:
         """
         Stream screenshots continuously.
         
         Args:
-            send_callback: Async function to send frame data
+            send_callback: Async function to send frame data (raw bytes)
             stop_event: Optional event to signal stopping
         """
         self.streaming = True
@@ -66,8 +65,8 @@ class ScreenshotStreamer:
                     continue
                 
                 try:
-                    frame_base64 = await self.capture_screenshot()
-                    await send_callback(frame_base64)
+                    frame_bytes = await self.capture_screenshot()
+                    await send_callback(frame_bytes)
                 except RuntimeError as e:
                     # Page might have been removed, wait and retry
                     if "Page not set" in str(e):

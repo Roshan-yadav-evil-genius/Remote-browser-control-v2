@@ -1,26 +1,28 @@
 """WebSocket message sending functionality."""
 import json
-from typing import Callable, Awaitable
+from typing import Callable
 
 
 class WebSocketMessageSender:
     """Handles sending WebSocket messages to frontend clients."""
     
-    def __init__(self, send_func: Callable[[str], Awaitable[None]]):
+    def __init__(self, send_func: Callable):
         """
         Initialize message sender.
         
         Args:
-            send_func: Async function to send text data via WebSocket
+            send_func: Async function to send data via WebSocket (supports both text_data and bytes_data)
         """
         self.send = send_func
     
-    async def send_frame(self, frame_base64: str) -> None:
-        """Send frame data to WebSocket client."""
-        await self.send(text_data=json.dumps({
-            'type': 'frame',
-            'data': frame_base64
-        }))
+    async def send_frame(self, frame_bytes: bytes) -> None:
+        """
+        Send frame data as binary WebSocket message.
+        
+        Args:
+            frame_bytes: Raw JPEG image bytes
+        """
+        await self.send(bytes_data=frame_bytes)
     
     async def send_error(self, message: str) -> None:
         """Send error message to WebSocket client."""
